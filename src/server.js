@@ -1028,23 +1028,39 @@ async function getFacebookMe(userToken) {
 }
 
 app.get('/auth/status', (_req, res) => {
-  const store = readTokenStore();
+  try {
+    const store = readTokenStore();
 
-  res.json({
-    ok: true,
-    hasToken: !!store?.userToken,
-    connected: !!store?.userToken,
-    tokenType: store?.tokenType || null,
-    expiresAt: store?.expiresAt || null,
-    updatedAt: store?.updatedAt || null,
-    profile: store?.userToken
-      ? {
-          id: store?.meta?.facebookUserId || null,
-          name: store?.meta?.facebookUserName || null
-        }
-      : null,
-    meta: store?.meta || {}
-  });
+    res.json({
+      ok: true,
+      hasToken: !!store?.userToken,
+      connected: !!store?.userToken,
+      tokenType: store?.tokenType || null,
+      expiresAt: store?.expiresAt || null,
+      updatedAt: store?.updatedAt || null,
+      profile: store?.userToken
+        ? {
+            id: store?.meta?.facebookUserId || null,
+            name: store?.meta?.facebookUserName || null
+          }
+        : null,
+      meta: store?.meta || {}
+    });
+  } catch (err) {
+    // Do not crash auth flow if token store is temporarily unavailable.
+    res.status(200).json({
+      ok: true,
+      hasToken: false,
+      connected: false,
+      tokenType: null,
+      expiresAt: null,
+      updatedAt: null,
+      profile: null,
+      meta: {},
+      degraded: true,
+      degradedReason: err?.message || 'Token store unavailable'
+    });
+  }
 });
 
 app.post('/auth/logout', (_req, res) => {
