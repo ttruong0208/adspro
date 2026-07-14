@@ -1,10 +1,10 @@
 const $ = (id) => document.getElementById(id);
-const BACKEND_URL_STORAGE_KEY = 'adsmanager_backend_url';
 const ADMIN_API_KEY_STORAGE_KEY = 'adsmanager_admin_api_key';
 const OPERATOR_NAME_STORAGE_KEY = 'adsmanager_operator_name';
 
 const els = {
   backendUrl: $('backendUrl'),
+  backendOriginText: $('backendOriginText'),
   adAccountId: $('adAccountId'),
   objective: $('objective'),
   postId: $('postId'),
@@ -121,18 +121,13 @@ function normalizeAdAccountIdInput(raw) {
 }
 
 function setupBackendUrlInput() {
-  if (!els.backendUrl) return;
-
-  const saved = normalizeBackendUrl(localStorage.getItem(BACKEND_URL_STORAGE_KEY) || '');
-  const fromInput = normalizeBackendUrl(els.backendUrl.value || '');
-  const fallback = resolveDefaultBackendUrl();
-  const resolved = saved || fromInput || fallback;
-
-  if (resolved) {
-    els.backendUrl.value = resolved;
+  const resolved = resolveDefaultBackendUrl() || normalizeBackendUrl(els.backendUrl?.value || '');
+  if (els.backendUrl) {
+    els.backendUrl.value = resolved || '';
   }
-
-  localStorage.setItem(BACKEND_URL_STORAGE_KEY, resolved || '');
+  if (els.backendOriginText) {
+    els.backendOriginText.textContent = resolved || '(không xác định)';
+  }
 }
 
 function setupOperatorInput() {
@@ -152,16 +147,9 @@ function setupAdminKeyInput() {
 }
 
 function getBackendUrl() {
-  const fromInput = normalizeBackendUrl(els.backendUrl?.value || '');
-  if (fromInput) {
-    localStorage.setItem(BACKEND_URL_STORAGE_KEY, fromInput);
-    return fromInput;
-  }
-
-  const saved = normalizeBackendUrl(localStorage.getItem(BACKEND_URL_STORAGE_KEY) || '');
-  if (saved) return saved;
-
-  return resolveDefaultBackendUrl();
+  const byDomain = resolveDefaultBackendUrl();
+  if (byDomain) return byDomain;
+  return normalizeBackendUrl(els.backendUrl?.value || '');
 }
 
 function getAdminApiKey() {
@@ -795,15 +783,6 @@ els.requestAccessBtn?.addEventListener('click', async () => {
 els.permissionCheckBtn.addEventListener('click', checkPermissionsOnly);
 els.runFullFlowBtn.addEventListener('click', runFullFlow);
 els.openAdsManagerBtn.addEventListener('click', openAdsManager);
-els.backendUrl.addEventListener('change', () => {
-  const normalized = normalizeBackendUrl(els.backendUrl.value || '');
-  if (normalized) {
-    els.backendUrl.value = normalized;
-    localStorage.setItem(BACKEND_URL_STORAGE_KEY, normalized);
-  }
-  checkFacebookAuth();
-  refreshReportSummary();
-});
 els.operatorName?.addEventListener('change', () => {
   getOperatorName();
 });
