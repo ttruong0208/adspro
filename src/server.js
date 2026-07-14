@@ -26,6 +26,7 @@ import {
   saveUserToken,
   clearStoredUserToken
 } from './tokenStore.js';
+import { authContextMiddleware, getAuthContext } from './authContext.js';
 import {
   appendRunEvent,
   getRunReportWithFilters,
@@ -59,6 +60,17 @@ function resolveRedirectUri(req) {
   return `http://localhost:${port}/auth/facebook/callback`;
 }
 
+function getCookieOptions(req, maxAgeMs = undefined) {
+  const secure = Boolean(req?.secure || String(req?.headers?.['x-forwarded-proto'] || '').includes('https'));
+  return {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure,
+    path: '/',
+    ...(typeof maxAgeMs === 'number' ? { maxAge: maxAgeMs } : {})
+  };
+}
+
 function isWriteMethod(method = 'GET') {
   return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || '').toUpperCase());
 }
@@ -78,6 +90,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
+app.use(authContextMiddleware);
 app.use((req, res, next) => {
   if (!ADMIN_API_KEY) return next();
   if (!isWriteMethod(req.method)) return next();
@@ -908,9 +921,11 @@ async function exchangeLongLivedUserToken(shortLivedUserToken) {
 
 app.get('/auth/permissions', async (_req, res) => {
   try {
+    const ctx = getAuthContext();
     const store = readTokenStore();
+    const token = ctx?.userToken || store?.userToken || null;
 
-    if (!store?.userToken) {
+    if (!token) {
       return res.status(400).json({
         ok: false,
         error: 'No token'
@@ -919,7 +934,7 @@ app.get('/auth/permissions', async (_req, res) => {
 
     const url =
       `https://graph.facebook.com/v23.0/me/permissions` +
-      `?access_token=${encodeURIComponent(store.userToken)}`;
+      `?access_token=${encodeURIComponent(token)}`;
 
     const fbRes = await fetch(url);
     const data = await fbRes.json();
@@ -980,16 +995,37 @@ app.get('/auth/facebook/callback', async (req, res) => {
     const longToken = await exchangeLongLivedUserToken(shortToken.access_token);
     const me = await getFacebookMe(longToken.access_token);
 
-    saveUserToken({
-      userToken: longToken.access_token,
-      tokenType: 'user',
-      expiresIn: longToken.expires_in || null,
-      meta: {
-        source: 'oauth_callback',
-        facebookUserId: me.id || null,
-        facebookUserName: me.name || null
-      }
-    });
+    const maxAgeMs =
+      typeof longToken.expires_in === 'number' && Number.isFinite(longToken.expires_in)
+        ? longToken.expires_in * 1000
+        : undefined;
+
+    // Vercel-friendly auth state: persist user token in secure HttpOnly cookies.
+    res.cookie('fb_user_token', longToken.access_token, getCookieOptions(req, maxAgeMs));
+    res.cookie(
+      'fb_profile',
+      JSON.stringify({
+        id: me.id || null,
+        name: me.name || null
+      }),
+      getCookieOptions(req, maxAgeMs)
+    );
+
+    try {
+      // Keep file-based storage as optional fallback for non-serverless runtimes.
+      saveUserToken({
+        userToken: longToken.access_token,
+        tokenType: 'user',
+        expiresIn: longToken.expires_in || null,
+        meta: {
+          source: 'oauth_callback',
+          facebookUserId: me.id || null,
+          facebookUserName: me.name || null
+        }
+      });
+    } catch {
+      // Ignore store write failures in stateless/serverless environments.
+    }
 
     res.send(`
       <!doctype html>
@@ -1029,6 +1065,23 @@ async function getFacebookMe(userToken) {
 
 app.get('/auth/status', (_req, res) => {
   try {
+    const ctx = getAuthContext();
+    if (ctx?.userToken) {
+      return res.json({
+        ok: true,
+        hasToken: true,
+        connected: true,
+        tokenType: 'user_cookie',
+        expiresAt: null,
+        updatedAt: null,
+        profile: {
+          id: ctx?.profile?.id || null,
+          name: ctx?.profile?.name || null
+        },
+        meta: { source: 'cookie' }
+      });
+    }
+
     const store = readTokenStore();
 
     res.json({
@@ -1064,7 +1117,13 @@ app.get('/auth/status', (_req, res) => {
 });
 
 app.post('/auth/logout', (_req, res) => {
-  clearStoredUserToken();
+  try {
+    clearStoredUserToken();
+  } catch {
+    // Ignore file-store cleanup errors.
+  }
+  res.clearCookie('fb_user_token', { path: '/' });
+  res.clearCookie('fb_profile', { path: '/' });
   res.json({ ok: true });
 });
 

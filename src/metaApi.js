@@ -1,6 +1,14 @@
 import { getStoredUserToken } from './tokenStore.js';
+import { getAuthContext } from './authContext.js';
 function getCurrentUserToken() {
-  return getStoredUserToken() || process.env.META_USER_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN || null;
+  const ctx = getAuthContext();
+  return (
+    ctx?.userToken ||
+    getStoredUserToken() ||
+    process.env.META_USER_ACCESS_TOKEN ||
+    process.env.META_ACCESS_TOKEN ||
+    null
+  );
 }
 const API_VERSION = process.env.META_API_VERSION || 'v23.0';
 const BASE_URL = `https://graph.facebook.com/${API_VERSION}`;
