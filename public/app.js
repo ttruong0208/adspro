@@ -278,10 +278,9 @@ async function checkFacebookAuth() {
   }
 
   try {
-    const [healthData, configData, statusData] = await Promise.all([
+    const [healthData, configData] = await Promise.all([
       apiRequest('/health', { method: 'GET', retries: 1, timeoutMs: 12000 }),
-      apiRequest('/auth/config', { method: 'GET', retries: 1, timeoutMs: 12000 }),
-      apiRequest('/auth/status', { method: 'GET', retries: 1, timeoutMs: 12000 })
+      apiRequest('/auth/config', { method: 'GET', retries: 1, timeoutMs: 12000 })
     ]);
 
     if (!healthData?.ok) {
@@ -313,6 +312,25 @@ async function checkFacebookAuth() {
     if (configData?.adminKeyRequired && !getAdminApiKey() && els.authConfigHint) {
       els.authConfigHint.style.display = 'block';
       els.authConfigHint.textContent = 'Server đang bật ADMIN_API_KEY. Hãy nhập Admin API Key để chạy các API ghi dữ liệu.';
+    }
+
+    let statusData = null;
+    try {
+      statusData = await apiRequest('/auth/status', {
+        method: 'GET',
+        retries: 1,
+        timeoutMs: 12000
+      });
+    } catch (statusErr) {
+      els.authStatus.textContent = 'Backend OK nhưng chưa đọc được trạng thái token';
+      els.authStatus.className = 'auth-status warn';
+      setLoginButtonState({ text: 'Đăng nhập Facebook', disabled: false, reason: '' });
+      renderFacebookIdentity(null);
+      if (els.authConfigHint) {
+        els.authConfigHint.style.display = 'block';
+        els.authConfigHint.textContent = `Chi tiết auth/status: ${statusErr.message || 'Unknown error'}`;
+      }
+      return;
     }
 
     if (statusData?.hasToken) {
