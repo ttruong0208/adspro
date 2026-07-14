@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 
-const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.resolve('data');
+const DATA_DIR =
+  process.env.RAILWAY_VOLUME_MOUNT_PATH ||
+  process.env.DATA_DIR ||
+  (process.env.VERCEL ? '/tmp/adsmanager-data' : path.resolve('data'));
 const RUNS_FILE = path.join(DATA_DIR, 'run-history.json');
 const MAX_RUNS = Number(process.env.REPORT_MAX_RUNS || 2000);
 
