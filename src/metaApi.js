@@ -588,6 +588,18 @@ async function resolveFacebookPageId(input) {
     throw new Error('Missing page input.');
   }
 
+  // If caller already provides a numeric page ID, use it directly.
+  // This avoids extra metadata resolution calls that can require
+  // Page Public Metadata Access for some pages.
+  if (/^\d+$/.test(raw)) {
+    return {
+      input: raw,
+      resolvedPageId: raw,
+      name: null,
+      link: `https://facebook.com/${raw}`
+    };
+  }
+
   const url = raw.startsWith('http')
     ? raw
     : `https://facebook.com/${raw}`;
