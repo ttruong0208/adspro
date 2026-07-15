@@ -126,6 +126,31 @@
         gap: 12px;
       }
 
+      .lang-switch {
+        display: inline-flex;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .lang-btn {
+        width: auto;
+        min-width: 44px;
+        border: 0;
+        border-radius: 0;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 800;
+        background: #fff;
+        color: #334155;
+      }
+
+      .lang-btn.active {
+        background: var(--primary-soft);
+        color: var(--primary);
+      }
+
       .system-pill {
         display: inline-flex;
         align-items: center;
@@ -517,14 +542,18 @@
       <main class="main">
         <div class="topbar">
           <div class="title">
-            <h1>Bot Ads Manager</h1>
-            <p>Bên trái quản lý kết nối/quyền, bên phải chạy full luồng ads.</p>
+            <h1 id="mainTitle">Bot Ads Manager</h1>
+            <p id="mainSubtitle">Bên trái quản lý kết nối/quyền, bên phải chạy full luồng ads.</p>
           </div>
 
           <div class="top-actions">
+            <div class="lang-switch">
+              <button id="langViBtn" class="lang-btn active" type="button">VI</button>
+              <button id="langEnBtn" class="lang-btn" type="button">EN</button>
+            </div>
             <div class="system-pill">
               <span class="dot"></span>
-              Hệ thống hoạt động tốt
+              <span id="systemStatusText">Hệ thống hoạt động tốt</span>
             </div>
             <div class="user-avatar">👤</div>
           </div>
@@ -536,8 +565,8 @@
               <div class="card-header">
                 <div class="card-icon">f</div>
                 <div>
-                  <h2 class="card-title">Kết nối Facebook</h2>
-                  <p class="card-subtitle">Đăng nhập để tool lấy token tự động và gọi Meta API.</p>
+                  <h2 id="fbCardTitle" class="card-title">Kết nối Facebook</h2>
+                  <p id="fbCardSubtitle" class="card-subtitle">Đăng nhập để tool lấy token tự động và gọi Meta API.</p>
                 </div>
               </div>
 
@@ -546,7 +575,7 @@
                   <img id="fbAvatar" class="fb-avatar" src="" alt="Facebook Avatar" />
                 </div>
 
-                <div class="auth-title">Trạng thái kết nối</div>
+                <div id="authTitle" class="auth-title">Trạng thái kết nối</div>
                 <div id="authStatus" class="auth-status">Đang kiểm tra trạng thái kết nối...</div>
                 <div id="fbIdentity" class="hint" style="display:none;"></div>
                 <div id="authConfigHint" class="hint" style="display:none;"></div>
@@ -564,24 +593,24 @@
               <div class="card-header">
                 <div class="card-icon">🛡</div>
                 <div>
-                  <h2 class="card-title">Quản lý quyền Page</h2>
-                  <p class="card-subtitle">Dùng để check quyền hoặc thêm/request quyền Page vào Business.</p>
+                  <h2 id="permissionCardTitle" class="card-title">Quản lý quyền Page</h2>
+                  <p id="permissionCardSubtitle" class="card-subtitle">Dùng để check quyền hoặc thêm/request quyền Page vào Business.</p>
                 </div>
               </div>
 
               <div class="grid">
                 <div>
-                  <label for="businessId">Business ID cần thêm quyền vào</label>
+                  <label id="businessIdLabel" for="businessId">Business ID cần thêm quyền vào</label>
                   <input id="businessId" placeholder="VD: 1568088500224087" />
-                  <div class="hint">Lấy trong Business Settings → Business Info → Business ID.</div>
+                  <div id="businessIdHint" class="hint">Lấy trong Business Settings → Business Info → Business ID.</div>
                 </div>
 
                 <div>
-                  <label for="permissionInput">Danh sách ID cần thêm/check quyền</label>
+                  <label id="permissionInputLabel" for="permissionInput">Danh sách ID cần thêm/check quyền</label>
                   <textarea id="permissionInput" placeholder="61577697758830
 61577761775494
 61577427975879"></textarea>
-                  <div class="hint">
+                  <div id="permissionInputHint" class="hint">
                     Mỗi dòng 1 ID. Có thể nhập ID sếp gửi, URL Page, hoặc Page ID thật.
                     Nếu để trống, tool sẽ dùng danh sách pageId chạy ads bên phải.
                   </div>
@@ -611,31 +640,31 @@
               <div class="card-header">
                 <div class="card-icon">🚀</div>
                 <div>
-                  <h2 class="card-title">Cấu hình chạy ads</h2>
-                  <p class="card-subtitle">Nhập thông tin để tạo campaign, ad set, ad và publish.</p>
+                  <h2 id="configCardTitle" class="card-title">Cấu hình chạy ads</h2>
+                  <p id="configCardSubtitle" class="card-subtitle">Nhập thông tin để tạo campaign, ad set, ad và publish.</p>
                 </div>
               </div>
 
               <div class="form-grid">
                 <div class="full">
-                  <label>Backend URL</label>
-                  <div class="hint">
+                  <label id="backendUrlLabel">Backend URL</label>
+                  <div id="backendUrlHint" class="hint">
                     Tự động dùng domain hiện tại: <span id="backendOriginText">(đang tải...)</span>
                   </div>
                   <input id="backendUrl" type="hidden" />
                 </div>
 
                 <div>
-                  <label for="adAccountId">Ad Account ID</label>
+                  <label id="adAccountLabel" for="adAccountId">Ad Account ID</label>
                   <div class="input-wrap">
                     <span class="input-icon">♙</span>
                     <input id="adAccountId" value="act_1438369167333697" />
                   </div>
-                  <div class="hint">Dán ID TKQC vào đây. Nhập `289285...` hoặc `act_289285...` đều được.</div>
+                  <div id="adAccountHint" class="hint">Dán ID TKQC vào đây. Nhập `289285...` hoặc `act_289285...` đều được.</div>
                 </div>
 
                 <div>
-                  <label for="objective">Objective</label>
+                  <label id="objectiveLabel" for="objective">Objective</label>
                   <div class="input-wrap">
                     <span class="input-icon">◎</span>
                     <select id="objective">
@@ -645,34 +674,34 @@
                 </div>
 
                 <div>
-                  <label for="postId">Post ID dùng cho ad</label>
+                  <label id="postIdLabel" for="postId">Post ID dùng cho ad</label>
                   <div class="input-wrap">
                     <span class="input-icon">▤</span>
                     <input id="postId" placeholder="123456789_987654321" />
                   </div>
-                  <div class="hint">Để trống nếu muốn backend tự chọn bài viết hợp lệ đầu tiên.</div>
+                  <div id="postIdHint" class="hint">Để trống nếu muốn backend tự chọn bài viết hợp lệ đầu tiên.</div>
                 </div>
 
                 <div>
-                  <label for="defaultPageName">Page Name dùng chung</label>
+                  <label id="defaultPageNameLabel" for="defaultPageName">Page Name dùng chung</label>
                   <div class="input-wrap">
                     <span class="input-icon">▤</span>
                     <input id="defaultPageName" placeholder="Để trống để lấy pageName = pageId" />
                   </div>
-                  <div class="hint">Nếu để trống, mỗi page sẽ tự dùng pageId làm pageName.</div>
+                  <div id="defaultPageNameHint" class="hint">Nếu để trống, mỗi page sẽ tự dùng pageId làm pageName.</div>
                 </div>
 
                 <div>
-                  <label for="defaultBudget">Budget áp dụng cho tất cả pageId</label>
+                  <label id="defaultBudgetLabel" for="defaultBudget">Budget áp dụng cho tất cả pageId</label>
                   <div class="input-wrap">
                     <span class="input-icon">$</span>
                     <input id="defaultBudget" type="number" min="1" value="100" placeholder="100" />
                   </div>
-                  <div class="hint">Nếu tài khoản chạy VND thì nhập ngân sách theo VND (ví dụ `100000`).</div>
+                  <div id="defaultBudgetHint" class="hint">Nếu tài khoản chạy VND thì nhập ngân sách theo VND (ví dụ `100000`).</div>
                 </div>
 
                 <div>
-                  <label for="operatorName">Operator (người chạy)</label>
+                  <label id="operatorNameLabel" for="operatorName">Operator (người chạy)</label>
                   <div class="input-wrap">
                     <span class="input-icon">👤</span>
                     <input id="operatorName" placeholder="VD: Truong Nguyen" />
@@ -680,7 +709,7 @@
                 </div>
 
                 <div>
-                  <label for="adminApiKey">Admin API Key (nếu bật bảo mật)</label>
+                  <label id="adminApiKeyLabel" for="adminApiKey">Admin API Key (nếu bật bảo mật)</label>
                   <div class="input-wrap">
                     <span class="input-icon">🔐</span>
                     <input id="adminApiKey" type="password" placeholder="Để trống nếu server không bật ADMIN_API_KEY" />
@@ -688,11 +717,11 @@
                 </div>
 
                 <div class="full">
-                  <label for="batchInput">Danh sách pageId để chạy ads</label>
+                  <label id="batchInputLabel" for="batchInput">Danh sách pageId để chạy ads</label>
                   <textarea id="batchInput" placeholder="61551441819219
 123456789012345
 987654321098765"></textarea>
-                  <div class="hint">
+                  <div id="batchInputHint" class="hint">
                     Mỗi dòng 1 pageId để chạy ads. Có thể dùng format: ID sếp gửi | Page ID thật.
                   </div>
                 </div>
@@ -703,8 +732,8 @@
               <div class="card-header">
                 <div class="card-icon">⚡</div>
                 <div>
-                  <h2 class="card-title">Chạy full luồng</h2>
-                  <p class="card-subtitle">Chạy bằng Ad Account và danh sách pageId ở phần cấu hình phía trên.</p>
+                  <h2 id="runCardTitle" class="card-title">Chạy full luồng</h2>
+                  <p id="runCardSubtitle" class="card-subtitle">Chạy bằng Ad Account và danh sách pageId ở phần cấu hình phía trên.</p>
                 </div>
               </div>
 
@@ -731,13 +760,13 @@
               <div class="card-header">
                 <div class="card-icon">📊</div>
                 <div>
-                  <h2 class="card-title">Báo cáo vận hành</h2>
-                  <p class="card-subtitle">Tổng hợp lịch sử chạy ads để gửi khách nhanh.</p>
+                  <h2 id="reportCardTitle" class="card-title">Báo cáo vận hành</h2>
+                  <p id="reportCardSubtitle" class="card-subtitle">Tổng hợp lịch sử chạy ads để gửi khách nhanh.</p>
                 </div>
               </div>
               <div class="form-grid">
                 <div>
-                  <label for="reportStatus">Lọc trạng thái</label>
+                  <label id="reportStatusLabel" for="reportStatus">Lọc trạng thái</label>
                   <select id="reportStatus">
                     <option value="all">Tất cả</option>
                     <option value="success">Success</option>
@@ -745,15 +774,15 @@
                   </select>
                 </div>
                 <div>
-                  <label for="reportAdAccount">Lọc theo TKQC</label>
+                  <label id="reportAdAccountLabel" for="reportAdAccount">Lọc theo TKQC</label>
                   <input id="reportAdAccount" placeholder="act_123..." />
                 </div>
                 <div>
-                  <label for="reportFrom">Từ ngày</label>
+                  <label id="reportFromLabel" for="reportFrom">Từ ngày</label>
                   <input id="reportFrom" type="date" />
                 </div>
                 <div>
-                  <label for="reportTo">Đến ngày</label>
+                  <label id="reportToLabel" for="reportTo">Đến ngày</label>
                   <input id="reportTo" type="date" />
                 </div>
               </div>
@@ -764,7 +793,7 @@
               <div class="card-header">
                 <div class="card-icon">▤</div>
                 <div>
-                  <h2 class="card-title">Log</h2>
+                  <h2 id="logCardTitle" class="card-title">Log</h2>
                 </div>
               </div>
 
