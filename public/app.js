@@ -194,7 +194,9 @@ const I18N = {
     skipNoPermission: '{{name}} - SKIP: page chưa cấp quyền vào Business/token',
     runSuccess: '{{name}} - Thành công',
     runSummary: 'Tổng kết: SUCCESS {{success}} | SKIP_NO_PERMISSION {{skip}} | FAILED {{failed}}',
+    runSummaryFailFastSkipped: 'Bỏ qua {{count}} dòng còn lại do fail-fast lỗi quyền.',
     runDone: 'Đã chạy xong tất cả các dòng.',
+    failFastPermissionStop: 'Dừng sớm: lỗi quyền ad account/token. Ngừng chạy các dòng còn lại để tránh mất thời gian.',
     adSetPrefix: 'Nhóm QC',
     exportCsvBackendInvalid: 'Backend URL chưa hợp lệ, không export được CSV.',
     noPermissionInputIds: 'Chưa nhập ID nào trong ô Danh sách pageId.',
@@ -318,7 +320,9 @@ const I18N = {
     skipNoPermission: '{{name}} - SKIP: page is not granted in Business/token',
     runSuccess: '{{name}} - Success',
     runSummary: 'Summary: SUCCESS {{success}} | SKIP_NO_PERMISSION {{skip}} | FAILED {{failed}}',
+    runSummaryFailFastSkipped: 'Skipped {{count}} remaining rows due to permission fail-fast.',
     runDone: 'Completed all rows.',
+    failFastPermissionStop: 'Fail-fast: ad account/token permission error. Stopping remaining rows to save time.',
     adSetPrefix: 'Ad Set',
     exportCsvBackendInvalid: 'Backend URL is invalid, cannot export CSV.',
     noPermissionInputIds: 'No IDs entered in the page ID list box.',
@@ -655,10 +659,37 @@ async function apiRequest(path, { method = 'GET', body = null, retries = 2, time
   }
 
   if (!response.ok) {
-    throw new Error(data?.error || `HTTP ${response.status}`);
+    const requestError = new Error(data?.error || `HTTP ${response.status}`);
+    requestError.status = response.status;
+    requestError.errorType = data?.errorType || null;
+    requestError.meta = data?.meta || null;
+    throw requestError;
   }
 
   return data;
+}
+
+function isPermissionDeniedError(err) {
+  const errorType = String(err?.errorType || '').toUpperCase();
+  const message = String(err?.message || '').toLowerCase();
+  const looksLikeAdAccountPermission =
+    message.includes('tài khoản quảng cáo') ||
+    message.includes('tai khoan quang cao') ||
+    message.includes('ad account') ||
+    message.includes('account') ||
+    message.includes('token');
+  const looksLikePagePermission =
+    message.includes('page') ||
+    message.includes('trang');
+
+  if (errorType === 'NO_PERMISSION' && looksLikeAdAccountPermission && !looksLikePagePermission) {
+    return true;
+  }
+
+  return (
+    (message.includes('không có quyền ghi') || message.includes('khong co quyen ghi')) &&
+      looksLikeAdAccountPermission
+  );
 }
 
 function setLoginButtonState({ disabled = false, text = null, reason = '' } = {}) {
@@ -1130,7 +1161,8 @@ async function runFullFlow() {
     const summary = {
       success: 0,
       failed: 0,
-      skippedNoPermission: 0
+      skippedNoPermission: 0,
+      skippedByFailFast: 0
     };
 
     for (let i = 0; i < items.length; i++) {
@@ -1171,6 +1203,13 @@ async function runFullFlow() {
       } catch (err) {
         summary.failed += 1;
         appendStatus(`${item.pageName} - ${err.message}`, 'error');
+
+        if (isPermissionDeniedError(err)) {
+          const remain = Math.max(items.length - (i + 1), 0);
+          summary.skippedByFailFast += remain;
+          appendStatus(t('failFastPermissionStop'), 'section');
+          break;
+        }
       }
     }
 
@@ -1183,6 +1222,12 @@ async function runFullFlow() {
       }),
       'section'
     );
+    if (summary.skippedByFailFast > 0) {
+      appendStatus(
+        t('runSummaryFailFastSkipped', { count: summary.skippedByFailFast }),
+        'section'
+      );
+    }
     appendStatus(t('runDone'), 'section');
     await refreshReportSummary();
   } catch (err) {
