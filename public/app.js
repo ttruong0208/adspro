@@ -85,7 +85,7 @@ permissionInput: document.getElementById('permissionInput'),
 const I18N = {
   vi: {
     appTitle: 'Bot Ads Manager',
-    mainSubtitle: 'Bên trái quản lý kết nối/quyền, bên phải chạy full luồng ads.',
+    mainSubtitle: 'Batch Facebook Ads Automation',
     systemStatus: 'Hệ thống hoạt động tốt',
     fbCardTitle: 'Kết nối Facebook',
     fbCardSubtitle: 'Đăng nhập để tool lấy token tự động và gọi Meta API.',
@@ -212,7 +212,7 @@ const I18N = {
   },
   en: {
     appTitle: 'Ads Manager Bot',
-    mainSubtitle: 'Manage auth/permissions on the left, run the full ads flow on the right.',
+    mainSubtitle: 'Batch Facebook Ads Automation',
     systemStatus: 'System healthy',
     fbCardTitle: 'Facebook Connection',
     fbCardSubtitle: 'Sign in to fetch token automatically and call Meta APIs.',
@@ -825,6 +825,13 @@ function renderReportSummary(data) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
   const topErrors = Array.isArray(summary.topErrors) ? summary.topErrors : [];
 
+  const reportsBadge = document.getElementById('navBadgeReports');
+  if (reportsBadge) {
+    const total = Number(summary.totalRuns) || 0;
+    reportsBadge.style.display = total > 0 ? '' : 'none';
+    reportsBadge.textContent = total > 999 ? '999+' : String(total);
+  }
+
   if (!summary.totalRuns) {
     els.reportSummary.textContent = t('reportEmpty');
     return;
@@ -1351,6 +1358,11 @@ function updateCampaignTypeUI() {
   if (els.leadFormIdField) {
     els.leadFormIdField.style.display = isLeadForm ? '' : 'none';
   }
+  // Lead Form ID nằm trong accordion Creative → mở ra khi chọn thu lead.
+  if (isLeadForm) {
+    const creativeAcc = els.leadFormIdField?.closest('details.acc');
+    if (creativeAcc) creativeAcc.open = true;
+  }
 }
 els.campaignType?.addEventListener('change', updateCampaignTypeUI);
 updateCampaignTypeUI();
@@ -1393,6 +1405,37 @@ const aiEls = {
 
 const aiChatHistory = [];
 let lastReview = null;
+let lastHealthScore = 0;
+
+// Đếm số + hiệu ứng thanh cho Campaign Audit (AI "sống").
+function animateNumber(el, from, to, format) {
+  const start = performance.now();
+  const dur = 500;
+  const delta = to - from;
+  function frame(now) {
+    const p = Math.min(1, (now - start) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const val = Math.round(from + delta * eased);
+    el.textContent = format ? format(val) : String(val);
+    if (p < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+function animateAuditPanel() {
+  if (!aiEls.auditBody) return;
+  requestAnimationFrame(() => {
+    aiEls.auditBody.querySelectorAll('.health-bar-fill[data-w]').forEach((el) => {
+      el.style.width = `${el.getAttribute('data-w')}%`;
+    });
+  });
+  const scoreEl = aiEls.auditBody.querySelector('.health-score[data-target]');
+  if (scoreEl) {
+    const target = Number(scoreEl.getAttribute('data-target')) || 0;
+    animateNumber(scoreEl, lastHealthScore, target, (v) => `${v}/100`);
+    lastHealthScore = target;
+  }
+}
 
 function showAiOutput(text) {
   if (!aiEls.output) return;
@@ -1477,7 +1520,7 @@ function renderReviewDashboard(data) {
           <span class="conf-label">Confidence (độ tin dựa trên dữ liệu)</span>
           <span class="conf-percent" style="color:${confColor};">${conf.percent}%</span>
         </div>
-        <div class="health-bar"><div class="health-bar-fill" style="width:${conf.percent}%;background:${confColor};"></div></div>
+        <div class="health-bar"><div class="health-bar-fill" data-w="${conf.percent}" style="width:0%;background:${confColor};"></div></div>
         ${confReasons}
         ${conf.note ? `<div class="conf-note">${escapeHtml(conf.note)}</div>` : ''}
       </div>`
@@ -1503,10 +1546,10 @@ function renderReviewDashboard(data) {
   return `
     <div class="health-wrap">
       <div class="health-top">
-        <span class="health-score" style="color:${color};">${score}/100</span>
+        <span class="health-score" data-target="${score}" style="color:${color};">${score}/100</span>
         <span class="health-grade">Campaign Health — ${escapeHtml(data.grade || '')}</span>
       </div>
-      <div class="health-bar"><div class="health-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+      <div class="health-bar"><div class="health-bar-fill" data-w="${pct}" style="width:${lastHealthScore}%;background:${color};"></div></div>
     </div>
 
     ${confHtml}
@@ -1600,6 +1643,7 @@ async function runLiveAudit() {
     if (seq !== liveAuditSeq) return; // đã có lần chạy mới hơn
     if (!data.ok) return;
     showAuditHtml(renderReviewDashboard(data));
+    animateAuditPanel();
   } catch {
     // Bỏ qua lỗi live audit để không làm phiền người dùng.
   }
@@ -1626,6 +1670,7 @@ async function aiReview() {
     }
 
     showAuditHtml(renderReviewDashboard(data));
+    animateAuditPanel();
 
     lastReview = {
       id: data.reviewId || null,
@@ -1874,6 +1919,47 @@ document.querySelectorAll('[data-goto]').forEach((btn) => {
   btn.addEventListener('click', () => switchPage(btn.getAttribute('data-goto')));
 });
 
+// Đếm số page + badge sidebar.
+function updatePageCount() {
+  const parsed = parseBatchInput(els.batchInput?.value || '');
+  const n = parsed.items.length;
+  const countEl = document.getElementById('pageCount');
+  if (countEl) countEl.textContent = `${n} page`;
+  const badge = document.getElementById('navBadgeCampaign');
+  if (badge) {
+    badge.style.display = n > 0 ? '' : 'none';
+    badge.textContent = n > 999 ? '999+' : String(n);
+  }
+}
+
+els.batchInput?.addEventListener('input', updatePageCount);
+
+// Import danh sách page từ file TXT/CSV.
+const importFileInput = document.getElementById('importFileInput');
+const importTxtBtn = document.getElementById('importTxtBtn');
+const importCsvBtn = document.getElementById('importCsvBtn');
+function triggerImport() {
+  if (importFileInput) importFileInput.click();
+}
+importTxtBtn?.addEventListener('click', triggerImport);
+importCsvBtn?.addEventListener('click', triggerImport);
+importFileInput?.addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = String(reader.result || '').replace(/[,;\t]+/g, '\n');
+    const normalized = normalizeIdListToSingleColumn(text);
+    if (els.batchInput) {
+      els.batchInput.value = normalized;
+      updatePageCount();
+      scheduleLiveAudit();
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
 // Cập nhật Campaign Audit theo thời gian thực khi đổi cấu hình.
 [
   'adAccountId',
@@ -1901,3 +1987,4 @@ checkFacebookAuth();
 refreshReportSummary();
 updateAiBadge();
 runLiveAudit();
+updatePageCount();

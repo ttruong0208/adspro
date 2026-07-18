@@ -585,19 +585,128 @@
       }
 
       .ai-explain {
-        width: auto;
+        width: 24px;
+        height: 24px;
+        padding: 0;
         margin-left: 8px;
-        padding: 2px 8px;
-        font-size: 11px;
+        display: inline-grid;
+        place-items: center;
+        font-size: 13px;
         font-weight: 800;
         border-radius: 999px;
         background: #eef4ff;
         color: #1d4ed8;
         border: 1px solid #dbeafe;
+        flex: 0 0 auto;
+        line-height: 1;
       }
 
       .ai-explain:hover {
         background: #dbeafe;
+      }
+
+      /* Audit panel renders real HTML (không pre-wrap để tránh khoảng trắng thừa) */
+      #auditBody {
+        white-space: normal;
+        max-height: none;
+        overflow: visible;
+      }
+
+      /* Accordion để giảm mật độ thông tin */
+      .acc {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        margin-bottom: 10px;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      .acc > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 11px 14px;
+        font-weight: 850;
+        font-size: 13px;
+        color: #0f172a;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        user-select: none;
+      }
+
+      .acc > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .acc > summary::before {
+        content: '▸';
+        font-size: 12px;
+        color: var(--muted);
+        transition: transform 0.18s ease;
+      }
+
+      .acc[open] > summary::before {
+        transform: rotate(90deg);
+      }
+
+      .acc > summary:hover {
+        background: #f8fafc;
+      }
+
+      .acc-body {
+        padding: 6px 14px 14px;
+      }
+
+      /* CTA chạy chiến dịch cố định cuối form */
+      .publish-bar {
+        position: sticky;
+        bottom: 0;
+        z-index: 5;
+        padding-top: 10px;
+        background: linear-gradient(180deg, rgba(247, 249, 252, 0), var(--bg) 55%);
+      }
+
+      /* Badge trên sidebar */
+      .nav-badge {
+        margin-left: auto;
+        background: var(--primary);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 800;
+        padding: 1px 7px;
+        border-radius: 999px;
+        min-width: 18px;
+        text-align: center;
+      }
+
+      /* Page list gọn: header + đếm + import */
+      .pagelist-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+
+      .pagelist-count {
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--primary);
+        background: var(--primary-soft);
+        padding: 2px 10px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+
+      .import-btns {
+        display: flex;
+        gap: 6px;
+      }
+
+      .import-btns button {
+        width: auto;
+        padding: 5px 10px;
+        font-size: 11px;
       }
 
       .label-row {
@@ -687,8 +796,9 @@
       }
 
       .health-score {
-        font-size: 26px;
+        font-size: 34px;
         font-weight: 900;
+        letter-spacing: -0.5px;
       }
 
       .health-grade {
@@ -707,7 +817,7 @@
       .health-bar-fill {
         height: 100%;
         border-radius: 999px;
-        transition: width 0.3s ease;
+        transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1), background 0.4s ease;
       }
 
       .prio-list,
@@ -891,10 +1001,10 @@
           <b>Bot Ads<br />Manager</b>
         </div>
         <button class="nav-item" type="button" data-page="dashboard"><span class="nav-ico">🏠</span> Dashboard</button>
-        <button class="nav-item active" type="button" data-page="campaign"><span class="nav-ico">📢</span> Campaign</button>
+        <button class="nav-item active" type="button" data-page="campaign"><span class="nav-ico">📢</span> Campaign<span id="navBadgeCampaign" class="nav-badge" style="display:none;">0</span></button>
         <button class="nav-item" type="button" data-page="pages"><span class="nav-ico">👥</span> Pages</button>
-        <button class="nav-item" type="button" data-page="ai"><span class="nav-ico">🤖</span> AI Assistant</button>
-        <button class="nav-item" type="button" data-page="reports"><span class="nav-ico">📊</span> Reports</button>
+        <button class="nav-item" type="button" data-page="ai"><span class="nav-ico">🤖</span> AI Assistant<span id="navBadgeAi" class="nav-badge">AI</span></button>
+        <button class="nav-item" type="button" data-page="reports"><span class="nav-ico">📊</span> Reports<span id="navBadgeReports" class="nav-badge" style="display:none;">0</span></button>
         <div class="sidebar-spacer"></div>
         <button class="nav-item" type="button" data-page="settings"><span class="nav-ico">⚙</span> Settings</button>
       </aside>
@@ -1024,150 +1134,177 @@
                 </div>
               </div>
 
-              <div class="form-grid">
-                <div>
-                  <label id="adAccountLabel" for="adAccountId">Ad Account ID</label>
-                  <div class="input-wrap">
-                    <span class="input-icon">♙</span>
-                    <input id="adAccountId" value="act_1438369167333697" />
-                  </div>
-                  <div id="adAccountHint" class="hint">Dán ID TKQC vào đây. Nhập `289285...` hoặc `act_289285...` đều được.</div>
-                </div>
+              <details class="acc" open>
+                <summary>📢 Campaign</summary>
+                <div class="acc-body">
+                  <div class="form-grid">
+                    <div class="full">
+                      <label id="adAccountLabel" for="adAccountId">Ad Account ID</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">♙</span>
+                        <input id="adAccountId" value="act_1438369167333697" />
+                      </div>
+                      <div id="adAccountHint" class="hint">Dán ID TKQC. Nhập `289285...` hoặc `act_289285...` đều được.</div>
+                    </div>
 
-                <div>
-                  <div class="label-row">
-                    <label id="campaignTypeLabel" for="campaignType">Loại chiến dịch</label>
-                    <button type="button" class="ai-explain" data-field="campaign_type">❓ AI</button>
-                  </div>
-                  <div class="input-wrap">
-                    <span class="input-icon">◎</span>
-                    <select id="campaignType">
-                      <option value="messenger">Tin nhắn (Messenger)</option>
-                      <option value="lead_form">Thu lead (Lead Form)</option>
-                    </select>
-                  </div>
-                  <div id="campaignTypeHint" class="hint">Chọn "Thu lead" để chạy quảng cáo form thu thập thông tin khách.</div>
-                </div>
+                    <div>
+                      <div class="label-row">
+                        <label id="campaignTypeLabel" for="campaignType">Loại chiến dịch</label>
+                        <button type="button" class="ai-explain" data-field="campaign_type" title="AI giải thích trường này">✨</button>
+                      </div>
+                      <div class="input-wrap">
+                        <span class="input-icon">◎</span>
+                        <select id="campaignType">
+                          <option value="messenger">Tin nhắn (Messenger)</option>
+                          <option value="lead_form">Thu lead (Lead Form)</option>
+                        </select>
+                      </div>
+                    </div>
 
-                <div>
-                  <div class="label-row">
-                    <label id="objectiveLabel" for="objective">Objective</label>
-                    <button type="button" class="ai-explain" data-field="objective">❓ AI</button>
-                  </div>
-                  <div class="input-wrap">
-                    <span class="input-icon">◎</span>
-                    <select id="objective">
-                      <option value="">Tự động theo loại chiến dịch</option>
-                      <option value="OUTCOME_ENGAGEMENT">OUTCOME_ENGAGEMENT</option>
-                      <option value="OUTCOME_LEADS">OUTCOME_LEADS</option>
-                    </select>
+                    <div>
+                      <div class="label-row">
+                        <label id="objectiveLabel" for="objective">Objective</label>
+                        <button type="button" class="ai-explain" data-field="objective" title="AI giải thích trường này">✨</button>
+                      </div>
+                      <div class="input-wrap">
+                        <span class="input-icon">◎</span>
+                        <select id="objective">
+                          <option value="">Tự động theo loại chiến dịch</option>
+                          <option value="OUTCOME_ENGAGEMENT">OUTCOME_ENGAGEMENT</option>
+                          <option value="OUTCOME_LEADS">OUTCOME_LEADS</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="full">
+                      <div class="label-row">
+                        <label id="defaultBudgetLabel" for="defaultBudget">Budget (áp dụng mọi pageId)</label>
+                        <button type="button" class="ai-explain" data-field="daily_budget" title="AI giải thích trường này">✨</button>
+                      </div>
+                      <div class="input-wrap">
+                        <span class="input-icon">$</span>
+                        <input id="defaultBudget" type="number" min="1" value="100" placeholder="100" />
+                      </div>
+                      <div id="defaultBudgetHint" class="hint">Tài khoản VND thì nhập theo VND (ví dụ `100000`).</div>
+                    </div>
                   </div>
                 </div>
+              </details>
 
-                <div id="leadFormIdField">
-                  <div class="label-row">
-                    <label id="leadFormIdLabel" for="leadFormId">Lead Form ID (cho chiến dịch thu lead)</label>
-                    <button type="button" class="ai-explain" data-field="lead_form">❓ AI</button>
-                  </div>
-                  <div class="input-wrap">
-                    <span class="input-icon">▤</span>
-                    <input id="leadFormId" placeholder="VD: 1234567890 (form của page)" />
-                  </div>
-                  <div id="leadFormIdHint" class="hint">Mỗi page có form riêng. Có thể nhập theo từng dòng: pageId|formId ở danh sách bên dưới.</div>
-                </div>
-
-                <div class="full">
+              <details class="acc">
+                <summary>🎯 Target</summary>
+                <div class="acc-body">
                   <div class="label-row">
                     <label id="targetLocationLabel">Khu vực target (cho thu lead theo dự án)</label>
-                    <button type="button" class="ai-explain" data-field="targeting">❓ AI</button>
+                    <button type="button" class="ai-explain" data-field="targeting" title="AI giải thích trường này">✨</button>
                   </div>
-                  <div class="form-grid">
+                  <div class="form-grid" style="margin-top:6px;">
                     <div>
                       <div class="input-wrap">
                         <span class="input-icon">◐</span>
-                        <input id="targetLatitude" placeholder="Vĩ độ (latitude) VD: 10.7769" />
+                        <input id="targetLatitude" placeholder="Latitude VD: 10.7769" />
                       </div>
                     </div>
                     <div>
                       <div class="input-wrap">
                         <span class="input-icon">◑</span>
-                        <input id="targetLongitude" placeholder="Kinh độ (longitude) VD: 106.7009" />
+                        <input id="targetLongitude" placeholder="Longitude VD: 106.7009" />
                       </div>
                     </div>
-                    <div>
+                    <div class="full">
                       <div class="input-wrap">
                         <span class="input-icon">◎</span>
                         <input id="targetRadiusKm" type="number" min="1" placeholder="Bán kính (km) VD: 10" />
                       </div>
                     </div>
                   </div>
-                  <div id="targetLocationHint" class="hint">Để trống sẽ dùng khu vực mặc định. Lấy tọa độ dự án trên Google Maps (chuột phải → tọa độ).</div>
+                  <div id="targetLocationHint" class="hint">Để trống = khu vực mặc định. Lấy tọa độ dự án trên Google Maps (chuột phải → tọa độ).</div>
                 </div>
+              </details>
 
-                <div>
-                  <label id="postIdLabel" for="postId">Post ID dùng cho ad</label>
-                  <div class="input-wrap">
-                    <span class="input-icon">▤</span>
-                    <input id="postId" placeholder="123456789_987654321" />
-                  </div>
-                  <div id="postIdHint" class="hint">Để trống nếu muốn backend tự chọn bài viết hợp lệ đầu tiên.</div>
-                </div>
+              <details class="acc">
+                <summary>🖼 Creative</summary>
+                <div class="acc-body">
+                  <div class="form-grid">
+                    <div id="leadFormIdField" class="full">
+                      <div class="label-row">
+                        <label id="leadFormIdLabel" for="leadFormId">Lead Form ID (chiến dịch thu lead)</label>
+                        <button type="button" class="ai-explain" data-field="lead_form" title="AI giải thích trường này">✨</button>
+                      </div>
+                      <div class="input-wrap">
+                        <span class="input-icon">▤</span>
+                        <input id="leadFormId" placeholder="VD: 1234567890 (form của page)" />
+                      </div>
+                      <div id="leadFormIdHint" class="hint">Mỗi page 1 form. Có thể nhập pageId|formId ở danh sách page.</div>
+                    </div>
 
-                <div>
-                  <label id="defaultPageNameLabel" for="defaultPageName">Page Name dùng chung</label>
-                  <div class="input-wrap">
-                    <span class="input-icon">▤</span>
-                    <input id="defaultPageName" placeholder="Để trống để lấy pageName = pageId" />
-                  </div>
-                  <div id="defaultPageNameHint" class="hint">Nếu để trống, mỗi page sẽ tự dùng pageId làm pageName.</div>
-                </div>
+                    <div>
+                      <label id="postIdLabel" for="postId">Post ID dùng cho ad</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">▤</span>
+                        <input id="postId" placeholder="123456789_987654321" />
+                      </div>
+                      <div id="postIdHint" class="hint">Để trống = backend tự chọn bài hợp lệ.</div>
+                    </div>
 
-                <div>
-                  <div class="label-row">
-                    <label id="defaultBudgetLabel" for="defaultBudget">Budget áp dụng cho tất cả pageId</label>
-                    <button type="button" class="ai-explain" data-field="daily_budget">❓ AI</button>
-                  </div>
-                  <div class="input-wrap">
-                    <span class="input-icon">$</span>
-                    <input id="defaultBudget" type="number" min="1" value="100" placeholder="100" />
-                  </div>
-                  <div id="defaultBudgetHint" class="hint">Nếu tài khoản chạy VND thì nhập ngân sách theo VND (ví dụ `100000`).</div>
-                </div>
-
-                <div>
-                  <label id="operatorNameLabel" for="operatorName">Operator (người chạy)</label>
-                  <div class="input-wrap">
-                    <span class="input-icon">👤</span>
-                    <input id="operatorName" placeholder="VD: Truong Nguyen" />
-                  </div>
-                </div>
-
-                <div>
-                  <label id="adminApiKeyLabel" for="adminApiKey">Admin API Key (nếu bật bảo mật)</label>
-                  <div class="input-wrap">
-                    <span class="input-icon">🔐</span>
-                    <input id="adminApiKey" type="password" placeholder="Để trống nếu server không bật ADMIN_API_KEY" />
+                    <div>
+                      <label id="defaultPageNameLabel" for="defaultPageName">Page Name dùng chung</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">▤</span>
+                        <input id="defaultPageName" placeholder="Trống = pageName lấy theo pageId" />
+                      </div>
+                      <div id="defaultPageNameHint" class="hint">Trống = mỗi page tự dùng pageId làm pageName.</div>
+                    </div>
                   </div>
                 </div>
+              </details>
 
-                <div class="full">
-                  <label id="batchInputLabel" for="batchInput">Danh sách pageId để chạy ads</label>
-                  <textarea id="batchInput" placeholder="61551441819219
+              <details class="acc">
+                <summary>⚙ Advanced</summary>
+                <div class="acc-body">
+                  <div class="form-grid">
+                    <div>
+                      <label id="operatorNameLabel" for="operatorName">Operator (người chạy)</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">👤</span>
+                        <input id="operatorName" placeholder="VD: Truong Nguyen" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label id="adminApiKeyLabel" for="adminApiKey">Admin API Key (nếu bật bảo mật)</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">🔐</span>
+                        <input id="adminApiKey" type="password" placeholder="Trống nếu server không bật ADMIN_API_KEY" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+
+            <div class="card">
+              <div class="pagelist-head">
+                <label id="batchInputLabel" for="batchInput" style="margin:0;">Danh sách pageId để chạy ads</label>
+                <span id="pageCount" class="pagelist-count">0 page</span>
+              </div>
+              <textarea id="batchInput" placeholder="61551441819219
 123456789012345
 987654321098765"></textarea>
-                  <div id="batchInputHint" class="hint">
-                    Mỗi dòng 1 pageId để chạy ads. Có thể dùng format: ID sếp gửi | Page ID thật.
-                  </div>
+              <div class="pagelist-head" style="margin-top:8px; margin-bottom:0;">
+                <div id="batchInputHint" class="hint" style="margin:0;">Mỗi dòng 1 pageId. Định dạng: ID sếp gửi | Page ID thật.</div>
+                <div class="import-btns">
+                  <button type="button" class="secondary" id="importTxtBtn">⤒ Import TXT</button>
+                  <button type="button" class="secondary" id="importCsvBtn">⤒ Import CSV</button>
+                  <input type="file" id="importFileInput" accept=".txt,.csv" style="display:none;" />
                 </div>
               </div>
             </div>
 
-            <div class="card">
-              <div class="actions" style="grid-template-columns:1fr;">
-                <button id="runFullFlowBtn" class="success btn-lg" type="button">
-                  ▶ Publish Campaign (chạy full luồng 1-7)
-                </button>
-              </div>
+            <div class="card publish-bar">
+              <button id="runFullFlowBtn" class="success btn-lg" type="button" style="width:100%;">
+                🚀 Chạy chiến dịch (full luồng 1-7)
+              </button>
               <div class="actions" style="grid-template-columns:1fr; margin-top:10px;">
                 <button id="openAdsManagerBtn" class="ghost" type="button">↗ Mở Ads Manager</button>
               </div>
