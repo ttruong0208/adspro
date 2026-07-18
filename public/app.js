@@ -894,6 +894,16 @@ function parsePageIdsOnly(raw) {
   ];
 }
 
+function normalizeIdListToSingleColumn(raw) {
+  const values = String(raw || '')
+    .replaceAll('\t', '\n')
+    .split(/[\s,;]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  return [...new Set(values)].join('\n');
+}
+
 function getInputPageIds() {
   const rawPermissionInput = els.permissionInput?.value || els.batchInput?.value || '';
   return parsePageIdsOnly(rawPermissionInput);
@@ -1302,6 +1312,16 @@ els.langEnBtn?.addEventListener('click', () => setLanguage('en'));
 els.adAccountId?.addEventListener('blur', () => {
   const normalized = normalizeAdAccountIdInput(els.adAccountId.value);
   if (normalized) els.adAccountId.value = normalized;
+});
+els.permissionInput?.addEventListener('paste', () => {
+  setTimeout(() => {
+    const normalized = normalizeIdListToSingleColumn(els.permissionInput.value);
+    els.permissionInput.value = normalized;
+  }, 0);
+});
+els.permissionInput?.addEventListener('blur', () => {
+  const normalized = normalizeIdListToSingleColumn(els.permissionInput.value);
+  els.permissionInput.value = normalized;
 });
 
 setupBackendUrlInput();
