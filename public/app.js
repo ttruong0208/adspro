@@ -1548,6 +1548,14 @@ function renderReviewDashboard(data) {
   const readyIcon = score >= 65 ? '✓' : score >= 45 ? '⚠' : '✕';
   const bd = Array.isArray(data.breakdown) ? data.breakdown : [];
   const bdSum = bd.reduce((s, b) => s + (Number(b.points) || 0), 0);
+  const missingCount = bd.filter((b) => (Number(b.points) || 0) < (Number(b.max) || 0)).length;
+  const gapHtml =
+    score < 90 && missingCount > 0
+      ? `<div class="gap-wrap">
+          <span class="gap-text">Thiếu ${missingCount} mục để đạt 90+</span>
+          <button type="button" class="auto-fix-btn">⚡ Auto Fix</button>
+        </div>`
+      : '';
   const breakdownHtml = bd.length
     ? `
       <button type="button" class="score-why-btn">📋 Vì sao được ${score} điểm?</button>
@@ -1572,6 +1580,7 @@ function renderReviewDashboard(data) {
         <span class="health-grade">${readyIcon} ${escapeHtml(data.readiness || data.grade || '')}</span>
       </div>
       <div class="health-bar"><div class="health-bar-fill" data-w="${pct}" style="width:${lastHealthScore}%;background:${color};"></div></div>
+      ${gapHtml}
       ${breakdownHtml}
     </div>
 
@@ -1675,6 +1684,74 @@ async function runLiveAudit() {
 function scheduleLiveAudit() {
   if (liveAuditTimer) clearTimeout(liveAuditTimer);
   liveAuditTimer = setTimeout(runLiveAudit, 450);
+}
+
+// Auto Fix: chỉ tự điền những gì SUY RA HỢP LÝ được (mặc định an toàn).
+// Những gì cần dữ liệu thật của người dùng thì KHÔNG bịa — chỉ chỉ ra để họ nhập.
+function showAutoFixSummary(applied, needUser) {
+  const el = document.getElementById('autoFixNote');
+  if (!el) return;
+  el.style.display = 'block';
+  let html = '';
+  if (applied.length) {
+    html += `<div><b>✓ Đã tự tối ưu:</b> ${applied.map((a) => escapeHtml(a)).join('; ')}</div>`;
+  }
+  if (needUser.length) {
+    const links = needUser
+      .map((n) => `<a class="autofix-jump" data-field="${n.field}">${escapeHtml(n.label)}</a>`)
+      .join(', ');
+    html += `<div style="margin-top:4px;color:#b45309;"><b>Cần bạn nhập để đạt 90+:</b> ${links}<div style="margin-top:2px;font-weight:600;">AI không tự bịa các mục này vì cần dữ liệu thật của bạn.</div></div>`;
+  }
+  if (!applied.length && !needUser.length) {
+    html = 'Không có gì để tự sửa — cấu hình đã ổn.';
+  }
+  el.innerHTML = html;
+}
+
+function autoFixCampaign() {
+  const applied = [];
+  const needUser = [];
+  const isLeadForm = String(els.campaignType?.value || 'messenger') === 'lead_form';
+
+  const budgetVal = Number(els.defaultBudget?.value);
+  if ((!Number.isFinite(budgetVal) || budgetVal <= 0) && els.defaultBudget) {
+    els.defaultBudget.value = '100000';
+    applied.push('Budget = 100.000 (mặc định — hãy chỉnh theo tài khoản)');
+  }
+
+  if (isLeadForm && els.objective?.value && els.objective.value !== 'OUTCOME_LEADS') {
+    els.objective.value = '';
+    applied.push('Objective = tự động (khớp thu lead)');
+  }
+
+  const hasCoords =
+    String(els.targetLatitude?.value || '').trim() && String(els.targetLongitude?.value || '').trim();
+  const radiusVal = Number(els.targetRadiusKm?.value);
+  if (hasCoords && (!Number.isFinite(radiusVal) || radiusVal < 2 || radiusVal > 50)) {
+    if (els.targetRadiusKm) els.targetRadiusKm.value = '10';
+    applied.push('Bán kính = 10km');
+  }
+
+  if (!hasCoords) needUser.push({ label: 'Tọa độ target', field: 'targetLatitude' });
+  if (isLeadForm && !String(els.leadFormId?.value || '').trim()) {
+    needUser.push({ label: 'Lead Form ID', field: 'leadFormId' });
+  }
+  const pageN = parseBatchInput(els.batchInput?.value || '').items.length;
+  if (pageN === 0) needUser.push({ label: 'Danh sách page', field: 'batchInput' });
+
+  updatePageCount();
+  scheduleLiveAudit();
+  showAutoFixSummary(applied, needUser);
+}
+
+function jumpToField(fieldId) {
+  const el = document.getElementById(fieldId);
+  if (!el) return;
+  switchPage('campaign');
+  const acc = el.closest('details.acc');
+  if (acc) acc.open = true;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => el.focus(), 250);
 }
 
 async function aiReview() {
@@ -1900,6 +1977,8 @@ aiEls.clearBtn?.addEventListener('click', () => {
   if (aiEls.auditMeta) aiEls.auditMeta.style.display = 'none';
   if (aiEls.auditResultActions) aiEls.auditResultActions.style.display = 'none';
   if (aiEls.auditHistory) aiEls.auditHistory.style.display = 'none';
+  const autoNote = document.getElementById('autoFixNote');
+  if (autoNote) autoNote.style.display = 'none';
   lastReview = null;
 });
 aiEls.suggestBtn?.addEventListener('click', aiSuggestTarget);
@@ -1909,6 +1988,11 @@ aiEls.chatInput?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') aiSendChat();
 });
 aiEls.auditBody?.addEventListener('click', (e) => {
+  const fixBtn = e.target.closest('.auto-fix-btn');
+  if (fixBtn) {
+    autoFixCampaign();
+    return;
+  }
   const whyBtn = e.target.closest('.score-why-btn');
   if (whyBtn) {
     const box = aiEls.auditBody.querySelector('.score-why');
@@ -1927,6 +2011,13 @@ aiEls.auditPdfBtn?.addEventListener('click', auditOpenPdf);
 aiEls.auditPngBtn?.addEventListener('click', auditDownloadPng);
 aiEls.auditShareBtn?.addEventListener('click', auditCopyShare);
 aiEls.auditHistoryBtn?.addEventListener('click', auditShowHistory);
+
+document.getElementById('autoFixNote')?.addEventListener('click', (e) => {
+  const link = e.target.closest('.autofix-jump');
+  if (!link) return;
+  e.preventDefault();
+  jumpToField(link.getAttribute('data-field'));
+});
 
 // ---------------------------------------------------------------------------
 // SaaS navigation (sidebar) + realtime Campaign Audit
