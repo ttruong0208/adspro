@@ -48,6 +48,12 @@ const els = {
   logCardTitle: $('logCardTitle'),
   adAccountId: $('adAccountId'),
   objective: $('objective'),
+  campaignType: $('campaignType'),
+  leadFormId: $('leadFormId'),
+  leadFormIdField: $('leadFormIdField'),
+  targetLatitude: $('targetLatitude'),
+  targetLongitude: $('targetLongitude'),
+  targetRadiusKm: $('targetRadiusKm'),
   postId: $('postId'),
   defaultPageName: $('defaultPageName'),
   defaultBudget: $('defaultBudget'),
@@ -195,6 +201,7 @@ const I18N = {
     runSuccess: '{{name}} - Thành công',
     runSummary: 'Tổng kết: SUCCESS {{success}} | SKIP_NO_PERMISSION {{skip}} | FAILED {{failed}}',
     runSummaryFailFastSkipped: 'Bỏ qua {{count}} dòng còn lại do fail-fast lỗi quyền.',
+    missingLeadFormId: 'Chế độ thu lead cần Lead Form ID. Nhập ở ô Lead Form ID, hoặc theo từng dòng dạng: pageId|formId. Thiếu ở dòng: {{lines}}',
     runDone: 'Đã chạy xong tất cả các dòng.',
     failFastPermissionStop: 'Dừng sớm: lỗi quyền ad account/token. Ngừng chạy các dòng còn lại để tránh mất thời gian.',
     adSetPrefix: 'Nhóm QC',
@@ -321,6 +328,7 @@ const I18N = {
     runSuccess: '{{name}} - Success',
     runSummary: 'Summary: SUCCESS {{success}} | SKIP_NO_PERMISSION {{skip}} | FAILED {{failed}}',
     runSummaryFailFastSkipped: 'Skipped {{count}} remaining rows due to permission fail-fast.',
+    missingLeadFormId: 'Lead form mode needs a Lead Form ID. Enter it in the Lead Form ID box, or per line as: pageId|formId. Missing at lines: {{lines}}',
     runDone: 'Completed all rows.',
     failFastPermissionStop: 'Fail-fast: ad account/token permission error. Stopping remaining rows to save time.',
     adSetPrefix: 'Ad Set',
@@ -868,7 +876,9 @@ function parseBatchInput(raw) {
   }
 
   for (const [index, line] of lines.entries()) {
-    const pageId = line.trim();
+    const [rawPageId, rawFormId] = line.split('|').map((x) => (x || '').trim());
+    const pageId = rawPageId;
+    const leadFormId = rawFormId || '';
 
     if (!pageId) {
       errors.push(t('missingPageIdAtLine', { line: index + 1 }));
@@ -877,7 +887,7 @@ function parseBatchInput(raw) {
 
     const pageName = defaultPageName || pageId;
 
-    items.push({ pageId, pageName, budget });
+    items.push({ pageId, pageName, budget, leadFormId });
   }
 
   return { items, errors };
@@ -936,17 +946,26 @@ function buildPayloadFromFirstItem(item) {
     els.adAccountId.value = adAccountId;
   }
 
+  const campaignType = String(els.campaignType?.value || 'messenger');
+  const isLeadForm = campaignType === 'lead_form';
+  const leadFormId = String(item.leadFormId || els.leadFormId?.value || '').trim();
+
   return {
     adAccountId,
     campaignName: `AUTO ${item.pageName} - ${item.pageId}`,
     adSetName: `${t('adSetPrefix')} - ${item.pageName} - ${item.pageId}`,
     adName: `Ad - ${item.pageName} - ${item.pageId}`,
-    objective: els.objective.value || 'OUTCOME_ENGAGEMENT',
+    objective: els.objective?.value || '',
     dailyBudget: item.budget,
     pageId: item.pageId,
     pageName: item.pageName,
-    optimizationGoal: 'CONVERSATIONS',
-    postId: els.postId.value.trim() || ''
+    optimizationGoal: '',
+    postId: els.postId.value.trim() || '',
+    campaignType,
+    leadFormId: isLeadForm ? leadFormId : '',
+    targetLatitude: String(els.targetLatitude?.value || '').trim(),
+    targetLongitude: String(els.targetLongitude?.value || '').trim(),
+    targetRadiusKm: String(els.targetRadiusKm?.value || '').trim()
   };
 }
 
@@ -1155,6 +1174,19 @@ async function runFullFlow() {
       throw new Error(t('noValidRecord'));
     }
 
+    const isLeadForm = String(els.campaignType?.value || 'messenger') === 'lead_form';
+    if (isLeadForm) {
+      const defaultLeadFormId = String(els.leadFormId?.value || '').trim();
+      const missingLines = items
+        .map((item, idx) => ({ idx: idx + 1, formId: String(item.leadFormId || defaultLeadFormId || '').trim() }))
+        .filter((x) => !x.formId)
+        .map((x) => x.idx);
+
+      if (missingLines.length) {
+        throw new Error(t('missingLeadFormId', { lines: missingLines.join(', ') }));
+      }
+    }
+
     appendStatus(t('startRunRows', { count: items.length }), 'section');
 
     const permissionScan = await scanPermissionsForItems(items, { render: true });
@@ -1313,6 +1345,15 @@ els.adAccountId?.addEventListener('blur', () => {
   const normalized = normalizeAdAccountIdInput(els.adAccountId.value);
   if (normalized) els.adAccountId.value = normalized;
 });
+
+function updateCampaignTypeUI() {
+  const isLeadForm = String(els.campaignType?.value || 'messenger') === 'lead_form';
+  if (els.leadFormIdField) {
+    els.leadFormIdField.style.display = isLeadForm ? '' : 'none';
+  }
+}
+els.campaignType?.addEventListener('change', updateCampaignTypeUI);
+updateCampaignTypeUI();
 els.permissionInput?.addEventListener('paste', () => {
   setTimeout(() => {
     const normalized = normalizeIdListToSingleColumn(els.permissionInput.value);

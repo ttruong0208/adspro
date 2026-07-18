@@ -222,42 +222,92 @@ export async function createCampaignDraft({
   });
 }
 
+// Default location fallback (kept for backward compatibility with older flow).
+const DEFAULT_TARGET_LOCATION = {
+  latitude: 13.695484180036347,
+  longitude: 108.08100700378418,
+  radiusKm: 4
+};
+
+export function buildAdSetTargeting({ location = null, mode = 'messenger' } = {}) {
+  const loc = location || {};
+  const latitude = Number(loc.latitude);
+  const longitude = Number(loc.longitude);
+  const radiusKm = Number(loc.radiusKm ?? loc.radius);
+
+  const hasCustom =
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    Number.isFinite(radiusKm) &&
+    radiusKm > 0;
+
+  const geoLocations = {
+    custom_locations: [
+      hasCustom
+        ? {
+            latitude,
+            longitude,
+            radius: radiusKm,
+            distance_unit: 'kilometer'
+          }
+        : {
+            latitude: DEFAULT_TARGET_LOCATION.latitude,
+            longitude: DEFAULT_TARGET_LOCATION.longitude,
+            radius: DEFAULT_TARGET_LOCATION.radiusKm,
+            distance_unit: 'kilometer'
+          }
+    ]
+  };
+
+  if (mode === 'lead_form') {
+    return {
+      geo_locations: geoLocations,
+      publisher_platforms: ['facebook'],
+      facebook_positions: ['feed']
+    };
+  }
+
+  return {
+    geo_locations: geoLocations,
+    publisher_platforms: ['messenger', 'facebook'],
+    facebook_positions: ['feed'],
+    messenger_positions: ['story']
+  };
+}
+
 export async function createAdSetDraft({
   adAccountId,
   campaignId,
   adSetName,
   pageId,
   optimizationGoal = 'CONVERSATIONS',
-  billingEvent = 'IMPRESSIONS'
+  billingEvent = 'IMPRESSIONS',
+  destinationType = 'MESSENGER',
+  mode = 'messenger',
+  location = null,
+  targeting = null
 }) {
   const normalized = normalizeAdAccountId(adAccountId);
-  const body = new URLSearchParams({
+  const finalTargeting = targeting || buildAdSetTargeting({ location, mode });
+
+  const params = {
     name: adSetName,
     campaign_id: campaignId,
     billing_event: billingEvent,
     optimization_goal: optimizationGoal,
     status: 'PAUSED',
-    destination_type: 'MESSENGER',
     promoted_object: JSON.stringify({
       page_id: pageId
     }),
-    targeting: JSON.stringify({
-      geo_locations: {
-        custom_locations: [
-          {
-            latitude: 13.695484180036347,
-            longitude: 108.08100700378418,
-            radius: 4,
-            distance_unit: 'kilometer'
-          }
-        ]
-      },
-      publisher_platforms: ['messenger', 'facebook'],
-      facebook_positions: ['feed'],
-      messenger_positions: ['story']
-    }),
+    targeting: JSON.stringify(finalTargeting),
     access_token: getCurrentUserToken()
-  });
+  };
+
+  if (destinationType) {
+    params.destination_type = destinationType;
+  }
+
+  const body = new URLSearchParams(params);
 
   return metaFetch(`/${normalized}/adsets`, {
     method: 'POST',
@@ -298,6 +348,52 @@ export async function getAdSet(adSetId) {
   return metaFetch(
     `/${adSetId}?fields=id,name,status,campaign_id,daily_budget,optimization_goal,destination_type&access_token=${encodeURIComponent(getCurrentUserToken())}`
   );
+}
+
+export async function createLeadFormAd({
+  adAccountId,
+  adSetId,
+  adName,
+  pageId,
+  leadFormId,
+  message = '',
+  link = ''
+}) {
+  if (!leadFormId) {
+    throw new Error('Missing leadFormId for lead form ad');
+  }
+
+  const normalized = normalizeAdAccountId(adAccountId);
+  const finalLink = link || `https://www.facebook.com/${pageId}`;
+
+  const creative = {
+    object_story_spec: {
+      page_id: pageId,
+      link_data: {
+        link: finalLink,
+        message: message || adName,
+        call_to_action: {
+          type: 'SIGN_UP',
+          value: {
+            lead_gen_form_id: String(leadFormId)
+          }
+        }
+      }
+    }
+  };
+
+  const body = new URLSearchParams({
+    name: adName,
+    adset_id: adSetId,
+    status: 'PAUSED',
+    creative: JSON.stringify(creative),
+    access_token: getCurrentUserToken()
+  });
+
+  return metaFetch(`/${normalized}/ads`, {
+    method: 'POST',
+    body
+  });
 }
 
 export async function createAdDraftWithObjectStoryId({

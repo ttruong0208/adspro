@@ -9,6 +9,7 @@ import {
   createAdSetDraft,
   createAdDraft,
   createAdDraftWithObjectStoryId,
+  createLeadFormAd,
   pickFirstValidPostAndCreateAd,
   updateCampaignStatus,
   updateAdSetStatus,
@@ -301,7 +302,13 @@ app.post('/flow/run-full-draft', async (req, res) => {
       optimizationGoal,
       postId,
       audienceName,
-      placements
+      placements,
+      campaignType,
+      leadFormId,
+      leadMessage,
+      targetLatitude,
+      targetLongitude,
+      targetRadiusKm
     } = req.body;
 
     if (!adAccountId) return res.status(400).json({ error: 'Missing adAccountId' });
@@ -312,10 +319,28 @@ app.post('/flow/run-full-draft', async (req, res) => {
       return res.status(400).json({ error: 'Invalid dailyBudget' });
     }
 
+    const isLeadForm = String(campaignType || 'messenger') === 'lead_form';
+
+    if (isLeadForm && !leadFormId) {
+      return res.status(400).json({
+        error: 'Missing leadFormId for lead form campaign'
+      });
+    }
+
+    const resolvedObjective = objective || (isLeadForm ? 'OUTCOME_LEADS' : 'OUTCOME_ENGAGEMENT');
+    const resolvedOptimizationGoal =
+      optimizationGoal || (isLeadForm ? 'LEAD_GENERATION' : 'CONVERSATIONS');
+    const resolvedDestinationType = isLeadForm ? null : 'MESSENGER';
+    const location = {
+      latitude: targetLatitude,
+      longitude: targetLongitude,
+      radiusKm: targetRadiusKm
+    };
+
     const campaign = await createCampaignDraft({
       adAccountId,
       campaignName,
-      objective,
+      objective: resolvedObjective,
       dailyBudget
     });
 
@@ -324,7 +349,10 @@ app.post('/flow/run-full-draft', async (req, res) => {
       campaignId: campaign.id,
       adSetName,
       pageId,
-      optimizationGoal
+      optimizationGoal: resolvedOptimizationGoal,
+      destinationType: resolvedDestinationType,
+      mode: isLeadForm ? 'lead_form' : 'messenger',
+      location
     });
 
     const adSetDetail = await getAdSet(adSet.id);
@@ -332,7 +360,22 @@ app.post('/flow/run-full-draft', async (req, res) => {
     let adDetail = null;
     let pickedPost = null;
 
-    if (postId) {
+    if (isLeadForm) {
+      const ad = await createLeadFormAd({
+        adAccountId,
+        adSetId: adSet.id,
+        adName: adName || `Lead Ad - ${pageId}`,
+        pageId,
+        leadFormId,
+        message: leadMessage || ''
+      });
+
+      adDetail = await getAd(ad.id);
+      pickedPost = {
+        source: 'lead_form',
+        leadFormId: String(leadFormId)
+      };
+    } else if (postId) {
       const ad = await createAdDraftWithObjectStoryId({
         adAccountId,
         adSetId: adSet.id,

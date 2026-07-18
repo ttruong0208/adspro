@@ -664,13 +664,61 @@
                 </div>
 
                 <div>
+                  <label id="campaignTypeLabel" for="campaignType">Loại chiến dịch</label>
+                  <div class="input-wrap">
+                    <span class="input-icon">◎</span>
+                    <select id="campaignType">
+                      <option value="messenger">Tin nhắn (Messenger)</option>
+                      <option value="lead_form">Thu lead (Lead Form)</option>
+                    </select>
+                  </div>
+                  <div id="campaignTypeHint" class="hint">Chọn "Thu lead" để chạy quảng cáo form thu thập thông tin khách.</div>
+                </div>
+
+                <div>
                   <label id="objectiveLabel" for="objective">Objective</label>
                   <div class="input-wrap">
                     <span class="input-icon">◎</span>
                     <select id="objective">
+                      <option value="">Tự động theo loại chiến dịch</option>
                       <option value="OUTCOME_ENGAGEMENT">OUTCOME_ENGAGEMENT</option>
+                      <option value="OUTCOME_LEADS">OUTCOME_LEADS</option>
                     </select>
                   </div>
+                </div>
+
+                <div id="leadFormIdField">
+                  <label id="leadFormIdLabel" for="leadFormId">Lead Form ID (cho chiến dịch thu lead)</label>
+                  <div class="input-wrap">
+                    <span class="input-icon">▤</span>
+                    <input id="leadFormId" placeholder="VD: 1234567890 (form của page)" />
+                  </div>
+                  <div id="leadFormIdHint" class="hint">Mỗi page có form riêng. Có thể nhập theo từng dòng: pageId|formId ở danh sách bên dưới.</div>
+                </div>
+
+                <div class="full">
+                  <label id="targetLocationLabel">Khu vực target (cho thu lead theo dự án)</label>
+                  <div class="form-grid">
+                    <div>
+                      <div class="input-wrap">
+                        <span class="input-icon">◐</span>
+                        <input id="targetLatitude" placeholder="Vĩ độ (latitude) VD: 10.7769" />
+                      </div>
+                    </div>
+                    <div>
+                      <div class="input-wrap">
+                        <span class="input-icon">◑</span>
+                        <input id="targetLongitude" placeholder="Kinh độ (longitude) VD: 106.7009" />
+                      </div>
+                    </div>
+                    <div>
+                      <div class="input-wrap">
+                        <span class="input-icon">◎</span>
+                        <input id="targetRadiusKm" type="number" min="1" placeholder="Bán kính (km) VD: 10" />
+                      </div>
+                    </div>
+                  </div>
+                  <div id="targetLocationHint" class="hint">Để trống sẽ dùng khu vực mặc định. Lấy tọa độ dự án trên Google Maps (chuột phải → tọa độ).</div>
                 </div>
 
                 <div>
