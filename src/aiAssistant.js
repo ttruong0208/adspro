@@ -279,7 +279,8 @@ export async function reviewCampaign(config = {}) {
     targetRadiusKm,
     pageCount,
     hasPixel,
-    hasUtm
+    hasUtm,
+    skipAiSummary
   } = config;
 
   const isLeadForm = String(campaignType) === 'lead_form';
@@ -470,7 +471,7 @@ export async function reviewCampaign(config = {}) {
     aiSummary: null
   };
 
-  if (isAiConfigured()) {
+  if (isAiConfigured() && skipAiSummary !== true) {
     try {
       const summary = await callLLM({
         system:

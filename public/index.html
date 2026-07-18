@@ -45,44 +45,66 @@
       .shell {
         min-height: 100vh;
         display: grid;
-        grid-template-columns: 74px minmax(0, 1fr);
+        grid-template-columns: 220px minmax(0, 1fr);
       }
 
       .sidebar {
-        background: rgba(255, 255, 255, 0.86);
+        background: rgba(255, 255, 255, 0.9);
         backdrop-filter: blur(14px);
         border-right: 1px solid var(--line);
         display: flex;
         flex-direction: column;
-        align-items: center;
-        padding: 16px 10px;
-        gap: 14px;
+        align-items: stretch;
+        padding: 16px 12px;
+        gap: 6px;
         position: sticky;
         top: 0;
         height: 100vh;
       }
 
+      .logo-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 4px 6px 14px;
+      }
+
       .logo {
-        width: 42px;
-        height: 42px;
-        border-radius: 12px;
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
         display: grid;
         place-items: center;
         background: linear-gradient(135deg, #2563eb, #1d4ed8);
         color: #fff;
-        font-size: 22px;
+        font-size: 20px;
         box-shadow: 0 10px 22px rgba(37, 99, 235, 0.26);
+        flex: 0 0 auto;
+      }
+
+      .logo-row b {
+        font-size: 14px;
+        line-height: 1.2;
       }
 
       .nav-item {
-        width: 42px;
-        height: 42px;
-        border-radius: 12px;
-        display: grid;
-        place-items: center;
+        width: 100%;
+        border: 0;
+        text-align: left;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
         color: #334155;
         background: transparent;
-        font-size: 19px;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+
+      .nav-item:hover {
+        background: #f1f5f9;
       }
 
       .nav-item.active {
@@ -90,8 +112,79 @@
         color: var(--primary);
       }
 
+      .nav-ico {
+        font-size: 16px;
+        width: 20px;
+        text-align: center;
+      }
+
       .sidebar-spacer {
         flex: 1;
+      }
+
+      /* Pages (SaaS-style navigation) */
+      .page {
+        display: none;
+      }
+
+      .page.active {
+        display: block;
+      }
+
+      .campaign-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        gap: 18px;
+        align-items: start;
+      }
+
+      .campaign-main,
+      .campaign-side {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .sticky-audit {
+        position: sticky;
+        top: 16px;
+      }
+
+      @media (max-width: 1120px) {
+        .campaign-grid {
+          grid-template-columns: 1fr;
+        }
+        .sticky-audit {
+          position: static;
+        }
+      }
+
+      /* Compact button color system */
+      button.success {
+        background: linear-gradient(135deg, #16a34a, #15803d);
+        color: #fff;
+        box-shadow: 0 12px 24px rgba(22, 163, 74, 0.22);
+      }
+      button.success:hover { background: linear-gradient(135deg, #15803d, #166534); }
+
+      button.warning {
+        background: #fffbeb;
+        color: #b45309;
+        border: 1px solid #fde68a;
+      }
+      button.warning:hover { background: #fef3c7; }
+
+      button.danger {
+        background: #fef2f2;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+      }
+      button.danger:hover { background: #fee2e2; }
+
+      .btn-lg {
+        padding: 15px 18px;
+        font-size: 15px;
       }
 
       .main {
@@ -283,7 +376,7 @@
       .form-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px 18px;
+        gap: 12px 14px;
       }
 
       .full {
@@ -294,7 +387,7 @@
         display: block;
         font-size: 12px;
         font-weight: 850;
-        margin-bottom: 7px;
+        margin-bottom: 4px;
         color: #0f172a;
       }
 
@@ -331,7 +424,7 @@
       select,
       textarea {
         margin: 0;
-        padding: 12px 13px;
+        padding: 8px 12px;
         border: 1px solid #dbe3ef;
         background: var(--input-bg);
         color: var(--text);
@@ -348,16 +441,16 @@
 
       textarea {
         resize: vertical;
-        min-height: 130px;
-        line-height: 1.5;
+        min-height: 96px;
+        line-height: 1.45;
       }
 
       #permissionInput {
-        min-height: 150px;
+        min-height: 120px;
       }
 
       #batchInput {
-        min-height: 135px;
+        min-height: 110px;
       }
 
       .hint {
@@ -741,12 +834,30 @@
           grid-template-columns: 1fr;
         }
 
-        .sidebar {
-          display: none;
-        }
-
         .shell {
           grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          position: static;
+          height: auto;
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .logo-row {
+          width: 100%;
+          padding: 0 6px 8px;
+        }
+
+        .nav-item {
+          width: auto;
+        }
+
+        .sidebar-spacer {
+          display: none;
         }
       }
 
@@ -775,13 +886,17 @@
   <body>
     <div class="shell">
       <aside class="sidebar">
-        <div class="logo">🤖</div>
-        <div class="nav-item active">▦</div>
-        <div class="nav-item">↗</div>
-        <div class="nav-item">⚙</div>
+        <div class="logo-row">
+          <div class="logo">🤖</div>
+          <b>Bot Ads<br />Manager</b>
+        </div>
+        <button class="nav-item" type="button" data-page="dashboard"><span class="nav-ico">🏠</span> Dashboard</button>
+        <button class="nav-item active" type="button" data-page="campaign"><span class="nav-ico">📢</span> Campaign</button>
+        <button class="nav-item" type="button" data-page="pages"><span class="nav-ico">👥</span> Pages</button>
+        <button class="nav-item" type="button" data-page="ai"><span class="nav-ico">🤖</span> AI Assistant</button>
+        <button class="nav-item" type="button" data-page="reports"><span class="nav-ico">📊</span> Reports</button>
         <div class="sidebar-spacer"></div>
-        <div class="nav-item">☼</div>
-        <div class="nav-item">⇥</div>
+        <button class="nav-item" type="button" data-page="settings"><span class="nav-ico">⚙</span> Settings</button>
       </aside>
 
       <main class="main">
@@ -804,8 +919,8 @@
           </div>
         </div>
 
-        <div class="layout">
-          <section class="left">
+        <div class="pages">
+          <section class="page" data-page="dashboard">
             <div class="card">
               <div class="card-header">
                 <div class="card-icon">f</div>
@@ -834,6 +949,23 @@
               </div>
             </div>
 
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon">📈</div>
+                <div>
+                  <h2 class="card-title">Bắt đầu nhanh</h2>
+                  <p class="card-subtitle">Kết nối Facebook ở trên, rồi sang tab Campaign để chạy full luồng và xem Campaign Audit realtime.</p>
+                </div>
+              </div>
+              <div class="actions">
+                <button class="primary" type="button" data-goto="campaign">📢 Tới Campaign</button>
+                <button class="secondary" type="button" data-goto="pages">👥 Quản lý quyền Page</button>
+                <button class="ghost" type="button" data-goto="reports">📊 Xem báo cáo</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="page" data-page="pages">
             <div class="card">
               <div class="card-header">
                 <div class="card-icon">🛡</div>
@@ -880,7 +1012,9 @@
             </div>
           </section>
 
-          <section class="right">
+          <section class="page active" data-page="campaign">
+            <div class="campaign-grid">
+              <div class="campaign-main">
             <div class="card">
               <div class="card-header">
                 <div class="card-icon">🚀</div>
@@ -891,14 +1025,6 @@
               </div>
 
               <div class="form-grid">
-                <div class="full">
-                  <label id="backendUrlLabel">Backend URL</label>
-                  <div id="backendUrlHint" class="hint">
-                    Tự động dùng domain hiện tại: <span id="backendOriginText">(đang tải...)</span>
-                  </div>
-                  <input id="backendUrl" type="hidden" />
-                </div>
-
                 <div>
                   <label id="adAccountLabel" for="adAccountId">Ad Account ID</label>
                   <div class="input-wrap">
@@ -1037,61 +1163,70 @@
             </div>
 
             <div class="card">
-              <div class="card-header">
-                <div class="card-icon">⚡</div>
-                <div>
-                  <h2 id="runCardTitle" class="card-title">Chạy full luồng</h2>
-                  <p id="runCardSubtitle" class="card-subtitle">Chạy bằng Ad Account và danh sách pageId ở phần cấu hình phía trên.</p>
-                </div>
+              <div class="actions" style="grid-template-columns:1fr;">
+                <button id="runFullFlowBtn" class="success btn-lg" type="button">
+                  ▶ Publish Campaign (chạy full luồng 1-7)
+                </button>
               </div>
-
-              <div class="actions">
-                <button id="runFullFlowBtn" class="primary" type="button">
-                  ▶ Chạy full luồng 1-7
-                </button>
-
-                <button id="openAdsManagerBtn" class="ghost" type="button">
-                  ↗ Mở Ads Manager
-                </button>
-
-                <button id="refreshReportBtn" class="secondary" type="button">
-                  ⟳ Tải báo cáo
-                </button>
-
-                <button id="exportReportBtn" class="ghost" type="button">
-                  ⤓ Export CSV
-                </button>
+              <div class="actions" style="grid-template-columns:1fr; margin-top:10px;">
+                <button id="openAdsManagerBtn" class="ghost" type="button">↗ Mở Ads Manager</button>
               </div>
             </div>
+              </div>
+
+              <aside class="campaign-side sticky-audit">
 
             <div class="card">
               <div class="card-header">
                 <div class="card-icon">🔍</div>
                 <div>
                   <h2 class="card-title">Campaign Audit<span id="aiStatusBadge" class="ai-badge off">AI: off</span></h2>
-                  <p class="card-subtitle">Kiểm tra sức khỏe chiến dịch: Health, Confidence, Checklist, Priority, Explain — và trợ lý AI.</p>
+                  <p class="card-subtitle">Health, Confidence, Checklist, Priority — cập nhật realtime khi đổi Budget/Objective/Target.</p>
                 </div>
               </div>
 
-              <div class="actions">
-                <button id="aiReviewBtn" class="primary" type="button">🔍 Chạy Campaign Audit</button>
-                <button id="aiClearBtn" class="ghost" type="button">✕ Xóa kết quả</button>
+              <div id="auditBody" class="ai-output" style="display:block;">Nhập cấu hình bên trái để xem đánh giá tự động.</div>
+
+              <div class="actions" style="margin-top:12px;">
+                <button id="aiReviewBtn" class="primary" type="button">💾 Lưu báo cáo</button>
+                <button id="aiClearBtn" class="ghost" type="button">✕ Xóa</button>
               </div>
 
               <div id="auditMeta" class="hint" style="display:none;"></div>
 
               <div class="actions" id="auditResultActions" style="display:none;">
-                <button id="auditPdfBtn" class="secondary" type="button">🖨 Tải PDF</button>
-                <button id="auditPngBtn" class="secondary" type="button">🖼 Download PNG</button>
-                <button id="auditShareBtn" class="ghost" type="button">🔗 Copy link</button>
+                <button id="auditPdfBtn" class="secondary" type="button">🖨 PDF</button>
+                <button id="auditPngBtn" class="secondary" type="button">🖼 PNG</button>
+                <button id="auditShareBtn" class="ghost" type="button">🔗 Link</button>
                 <button id="auditHistoryBtn" class="ghost" type="button">🕘 Lịch sử</button>
               </div>
 
               <div id="auditHistory" class="ai-output" style="display:none;"></div>
+            </div>
 
-              <div class="ai-subgrid" style="margin-top:14px;">
+              </aside>
+            </div>
+          </section>
+
+          <section class="page" data-page="ai">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon">🤖</div>
                 <div>
-                  <label for="aiIndustry">Gợi ý target — Ngành/sản phẩm</label>
+                  <h2 class="card-title">AI Assistant</h2>
+                  <p class="card-subtitle">Hỏi gì cũng được, hoặc dùng nút nhanh: gợi ý target, viết content.</p>
+                </div>
+              </div>
+
+              <div id="aiChatLog" class="ai-output" style="display:none;"></div>
+              <div class="ai-chat-box" style="margin-top:12px;">
+                <input id="aiChatInput" placeholder="Hỏi gì cũng được... VD: chạy bán đất Quảng Nam nên target sao?" />
+                <button id="aiChatSendBtn" class="primary" type="button">Send</button>
+              </div>
+
+              <div class="ai-subgrid" style="margin-top:16px;">
+                <div>
+                  <label for="aiIndustry">🎯 Gợi ý Target — Ngành/sản phẩm</label>
                   <input id="aiIndustry" placeholder="VD: Bất động sản căn hộ Đà Nẵng" />
                 </div>
                 <div>
@@ -1100,29 +1235,22 @@
                 </div>
               </div>
               <div class="actions" style="grid-template-columns:1fr;">
-                <button id="aiSuggestTargetBtn" class="secondary" type="button">🎯 AI Gợi ý Target</button>
+                <button id="aiSuggestTargetBtn" class="secondary" type="button">🎯 Gợi ý Target</button>
               </div>
 
               <div style="margin-top:14px;">
-                <label for="aiProduct">Viết content — Sản phẩm/dự án</label>
+                <label for="aiProduct">📝 Viết Content — Sản phẩm/dự án</label>
                 <input id="aiProduct" placeholder="VD: Căn hộ 2PN view sông, dự án ABC Đà Nẵng" />
               </div>
               <div class="actions" style="grid-template-columns:1fr;">
-                <button id="aiContentBtn" class="secondary" type="button">✍ AI Viết Content</button>
+                <button id="aiContentBtn" class="secondary" type="button">📝 Viết Content</button>
               </div>
 
               <div id="aiOutput" class="ai-output" style="display:none;"></div>
-
-              <div style="margin-top:16px;">
-                <label for="aiChatInput">AI Chat tư vấn</label>
-                <div class="ai-chat-box">
-                  <input id="aiChatInput" placeholder="VD: Tôi muốn chạy quảng cáo bán đất ở Quảng Nam" />
-                  <button id="aiChatSendBtn" class="primary" type="button">Gửi</button>
-                </div>
-              </div>
-              <div id="aiChatLog" class="ai-output" style="display:none;"></div>
             </div>
+          </section>
 
+          <section class="page" data-page="reports">
             <div class="card">
               <div class="card-header">
                 <div class="card-icon">📊</div>
@@ -1153,20 +1281,50 @@
                   <input id="reportTo" type="date" />
                 </div>
               </div>
-              <div id="reportSummary" class="hint">Chưa có dữ liệu báo cáo.</div>
-            </div>
-
-            <div class="card">
-              <div class="card-header">
-                <div class="card-icon">▤</div>
-                <div>
-                  <h2 id="logCardTitle" class="card-title">Log</h2>
-                </div>
+              <div class="actions" style="margin-top:12px;">
+                <button id="refreshReportBtn" class="secondary" type="button">⟳ Tải báo cáo</button>
+                <button id="exportReportBtn" class="ghost" type="button">⤓ Export CSV</button>
               </div>
-
-              <div id="status" class="status">Chưa chạy.</div>
+              <div id="reportSummary" class="hint" style="margin-top:12px;">Chưa có dữ liệu báo cáo.</div>
             </div>
           </section>
+
+          <section class="page" data-page="settings">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon">⚙</div>
+                <div>
+                  <h2 class="card-title">Settings</h2>
+                  <p class="card-subtitle">Cấu hình nâng cao và thông tin hệ thống.</p>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="full">
+                  <label id="backendUrlLabel">Backend URL</label>
+                  <div id="backendUrlHint" class="hint">Tự động dùng domain hiện tại: <span id="backendOriginText">(đang tải...)</span></div>
+                  <input id="backendUrl" type="hidden" />
+                </div>
+                <div>
+                  <label>Ngôn ngữ</label>
+                  <div class="hint">Đổi VI / EN ở góc trên bên phải.</div>
+                </div>
+                <div>
+                  <label>AI</label>
+                  <div class="hint">Trạng thái AI hiển thị (badge) ở tab Campaign. Bật bằng biến môi trường AI_API_KEY.</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
+          <div class="card-header">
+            <div class="card-icon">▤</div>
+            <div>
+              <h2 id="logCardTitle" class="card-title">Log</h2>
+            </div>
+          </div>
+          <div id="status" class="status">Chưa chạy.</div>
         </div>
       </main>
     </div>

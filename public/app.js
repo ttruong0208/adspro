@@ -1370,6 +1370,7 @@ els.permissionInput?.addEventListener('blur', () => {
 // ---------------------------------------------------------------------------
 const aiEls = {
   output: $('aiOutput'),
+  auditBody: $('auditBody'),
   chatLog: $('aiChatLog'),
   statusBadge: $('aiStatusBadge'),
   reviewBtn: $('aiReviewBtn'),
@@ -1403,6 +1404,19 @@ function showAiOutputHtml(html) {
   if (!aiEls.output) return;
   aiEls.output.style.display = 'block';
   aiEls.output.innerHTML = html;
+}
+
+// Campaign Audit panel (sticky, realtime) — separate from AI Assistant output.
+function showAuditText(text) {
+  if (!aiEls.auditBody) return;
+  aiEls.auditBody.style.display = 'block';
+  aiEls.auditBody.textContent = text;
+}
+
+function showAuditHtml(html) {
+  if (!aiEls.auditBody) return;
+  aiEls.auditBody.style.display = 'block';
+  aiEls.auditBody.innerHTML = html;
 }
 
 function healthColor(score) {
@@ -1532,7 +1546,7 @@ function formatExplanation(exp) {
 }
 
 async function explainFieldAi(field) {
-  showAiOutput('Đang tải giải thích...');
+  showAuditText('Đang tải giải thích...');
   try {
     const data = await apiRequest('/ai/explain-field', {
       method: 'POST',
@@ -1541,12 +1555,12 @@ async function explainFieldAi(field) {
       timeoutMs: 30000
     });
     if (!data.ok) {
-      showAiOutput(data.error || 'Không có giải thích cho trường này.');
+      showAuditText(data.error || 'Không có giải thích cho trường này.');
       return;
     }
-    showAiOutput(formatExplanation(data.explanation));
+    showAuditText(formatExplanation(data.explanation));
   } catch (err) {
-    showAiOutput(`Lỗi: ${err.message}`);
+    showAuditText(`Lỗi: ${err.message}`);
   }
 }
 
@@ -1567,8 +1581,37 @@ function collectCampaignConfigForReview() {
   };
 }
 
+// Realtime audit: chạy tự động khi người dùng đổi cấu hình (không lưu, không gọi LLM).
+let liveAuditTimer = null;
+let liveAuditSeq = 0;
+
+async function runLiveAudit() {
+  const seq = ++liveAuditSeq;
+  try {
+    const cfg = collectCampaignConfigForReview();
+    cfg.save = false;
+    cfg.skipAiSummary = true;
+    const data = await apiRequest('/ai/review-campaign', {
+      method: 'POST',
+      body: cfg,
+      retries: 0,
+      timeoutMs: 20000
+    });
+    if (seq !== liveAuditSeq) return; // đã có lần chạy mới hơn
+    if (!data.ok) return;
+    showAuditHtml(renderReviewDashboard(data));
+  } catch {
+    // Bỏ qua lỗi live audit để không làm phiền người dùng.
+  }
+}
+
+function scheduleLiveAudit() {
+  if (liveAuditTimer) clearTimeout(liveAuditTimer);
+  liveAuditTimer = setTimeout(runLiveAudit, 450);
+}
+
 async function aiReview() {
-  showAiOutput('Đang review chiến dịch...');
+  showAuditText('Đang lưu báo cáo Campaign Audit...');
   try {
     const cfg = collectCampaignConfigForReview();
     const data = await apiRequest('/ai/review-campaign', {
@@ -1578,11 +1621,11 @@ async function aiReview() {
       timeoutMs: 40000
     });
     if (!data.ok) {
-      showAiOutput(data.error || 'Review lỗi.');
+      showAuditText(data.error || 'Review lỗi.');
       return;
     }
 
-    showAiOutputHtml(renderReviewDashboard(data));
+    showAuditHtml(renderReviewDashboard(data));
 
     lastReview = {
       id: data.reviewId || null,
@@ -1606,7 +1649,7 @@ async function aiReview() {
       aiEls.auditResultActions.style.display = lastReview.id ? '' : 'none';
     }
   } catch (err) {
-    showAiOutput(`Lỗi: ${err.message}`);
+    showAuditText(`Lỗi: ${err.message}`);
   }
 }
 
@@ -1622,25 +1665,25 @@ function loadHtml2Canvas() {
 }
 
 async function auditDownloadPng() {
-  if (!aiEls.output || aiEls.output.style.display === 'none') {
-    showAiOutput('Chạy Campaign Audit trước khi tải ảnh.');
+  if (!aiEls.auditBody || aiEls.auditBody.style.display === 'none') {
+    showAuditText('Chạy Campaign Audit trước khi tải ảnh.');
     return;
   }
   try {
     const html2canvas = await loadHtml2Canvas();
-    const canvas = await html2canvas(aiEls.output, { backgroundColor: '#ffffff', scale: 2 });
+    const canvas = await html2canvas(aiEls.auditBody, { backgroundColor: '#ffffff', scale: 2 });
     const link = document.createElement('a');
     link.download = `campaign-audit${lastReview?.reviewNumber ? '-' + lastReview.reviewNumber : ''}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   } catch (err) {
-    showAiOutput(`Lỗi tạo ảnh: ${err.message}`);
+    showAuditText(`Lỗi tạo ảnh: ${err.message}`);
   }
 }
 
 function auditOpenPdf() {
   if (!lastReview?.shareUrl) {
-    showAiOutput('Chưa có link review. Chạy Campaign Audit trước.');
+    showAuditText('Chưa có link review. Bấm "Lưu báo cáo" trước.');
     return;
   }
   window.open(lastReview.shareUrl, '_blank');
@@ -1648,7 +1691,7 @@ function auditOpenPdf() {
 
 async function auditCopyShare() {
   if (!lastReview?.shareUrl) {
-    showAiOutput('Chưa có link chia sẻ. Chạy Campaign Audit trước.');
+    showAuditText('Chưa có link chia sẻ. Bấm "Lưu báo cáo" trước.');
     return;
   }
   try {
@@ -1783,10 +1826,13 @@ document.querySelectorAll('.ai-explain').forEach((btn) => {
 });
 aiEls.reviewBtn?.addEventListener('click', aiReview);
 aiEls.clearBtn?.addEventListener('click', () => {
-  if (aiEls.output) {
-    aiEls.output.style.display = 'none';
-    aiEls.output.textContent = '';
+  if (aiEls.auditBody) {
+    aiEls.auditBody.innerHTML = 'Nhập cấu hình bên trái để xem đánh giá tự động.';
   }
+  if (aiEls.auditMeta) aiEls.auditMeta.style.display = 'none';
+  if (aiEls.auditResultActions) aiEls.auditResultActions.style.display = 'none';
+  if (aiEls.auditHistory) aiEls.auditHistory.style.display = 'none';
+  lastReview = null;
 });
 aiEls.suggestBtn?.addEventListener('click', aiSuggestTarget);
 aiEls.contentBtn?.addEventListener('click', aiGenerateContent);
@@ -1794,11 +1840,11 @@ aiEls.chatSendBtn?.addEventListener('click', aiSendChat);
 aiEls.chatInput?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') aiSendChat();
 });
-aiEls.output?.addEventListener('click', (e) => {
+aiEls.auditBody?.addEventListener('click', (e) => {
   const btn = e.target.closest('.prio-explain-btn');
   if (!btn) return;
   const idx = btn.getAttribute('data-idx');
-  const box = aiEls.output.querySelector(`.prio-explain[data-idx="${idx}"]`);
+  const box = aiEls.auditBody.querySelector(`.prio-explain[data-idx="${idx}"]`);
   if (box) {
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
   }
@@ -1808,6 +1854,45 @@ aiEls.auditPngBtn?.addEventListener('click', auditDownloadPng);
 aiEls.auditShareBtn?.addEventListener('click', auditCopyShare);
 aiEls.auditHistoryBtn?.addEventListener('click', auditShowHistory);
 
+// ---------------------------------------------------------------------------
+// SaaS navigation (sidebar) + realtime Campaign Audit
+// ---------------------------------------------------------------------------
+function switchPage(pageId) {
+  if (!pageId) return;
+  document.querySelectorAll('.page').forEach((p) => {
+    p.classList.toggle('active', p.getAttribute('data-page') === pageId);
+  });
+  document.querySelectorAll('.nav-item').forEach((n) => {
+    n.classList.toggle('active', n.getAttribute('data-page') === pageId);
+  });
+}
+
+document.querySelectorAll('.nav-item[data-page]').forEach((btn) => {
+  btn.addEventListener('click', () => switchPage(btn.getAttribute('data-page')));
+});
+document.querySelectorAll('[data-goto]').forEach((btn) => {
+  btn.addEventListener('click', () => switchPage(btn.getAttribute('data-goto')));
+});
+
+// Cập nhật Campaign Audit theo thời gian thực khi đổi cấu hình.
+[
+  'adAccountId',
+  'campaignType',
+  'objective',
+  'leadFormId',
+  'targetLatitude',
+  'targetLongitude',
+  'targetRadiusKm',
+  'postId',
+  'defaultBudget',
+  'batchInput'
+].forEach((id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('input', scheduleLiveAudit);
+  el.addEventListener('change', scheduleLiveAudit);
+});
+
 setupBackendUrlInput();
 setupOperatorInput();
 setupAdminKeyInput();
@@ -1815,3 +1900,4 @@ applyI18n();
 checkFacebookAuth();
 refreshReportSummary();
 updateAiBadge();
+runLiveAudit();
