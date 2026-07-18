@@ -491,6 +491,251 @@
         margin: 10px 0;
       }
 
+      .ai-explain {
+        width: auto;
+        margin-left: 8px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 800;
+        border-radius: 999px;
+        background: #eef4ff;
+        color: #1d4ed8;
+        border: 1px solid #dbeafe;
+      }
+
+      .ai-explain:hover {
+        background: #dbeafe;
+      }
+
+      .label-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .label-row label {
+        margin-bottom: 0;
+      }
+
+      .ai-output {
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: var(--radius-sm);
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        font-size: 12px;
+        white-space: pre-wrap;
+        line-height: 1.5;
+        max-height: 320px;
+        overflow: auto;
+      }
+
+      .ai-score {
+        font-size: 22px;
+        font-weight: 900;
+        color: #1d4ed8;
+      }
+
+      .ai-subgrid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .ai-chat-box {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .ai-chat-box input {
+        flex: 1;
+      }
+
+      .ai-chat-box button {
+        width: auto;
+        padding: 10px 16px;
+      }
+
+      .ai-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        margin-left: 8px;
+      }
+
+      .ai-badge.on {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .ai-badge.off {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+
+      .health-wrap {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 14px;
+        background: #ffffff;
+        margin-top: 12px;
+      }
+
+      .health-top {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .health-score {
+        font-size: 26px;
+        font-weight: 900;
+      }
+
+      .health-grade {
+        font-size: 13px;
+        font-weight: 800;
+        color: var(--muted);
+      }
+
+      .health-bar {
+        height: 12px;
+        border-radius: 999px;
+        background: #eef2f7;
+        overflow: hidden;
+      }
+
+      .health-bar-fill {
+        height: 100%;
+        border-radius: 999px;
+        transition: width 0.3s ease;
+      }
+
+      .prio-list,
+      .check-list {
+        list-style: none;
+        margin: 12px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .prio-item {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: #f8fafc;
+        border: 1px solid var(--soft-line);
+        font-size: 12px;
+      }
+
+      .prio-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        margin-top: 4px;
+        flex: 0 0 auto;
+      }
+
+      .prio-high { background: #dc2626; }
+      .prio-medium { background: #f59e0b; }
+      .prio-low { background: #16a34a; }
+
+      .prio-title {
+        font-weight: 800;
+      }
+
+      .prio-action {
+        color: var(--muted);
+      }
+
+      .check-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .check-pass { color: #16a34a; }
+      .check-fail { color: #dc2626; }
+      .check-warn { color: #c2410c; }
+      .check-na,
+      .check-unknown { color: #94a3b8; }
+
+      .ai-section-title {
+        font-size: 12px;
+        font-weight: 850;
+        margin: 14px 0 4px;
+        color: #0f172a;
+      }
+
+      .conf-wrap {
+        margin-top: 10px;
+        padding: 12px;
+        border: 1px dashed var(--line);
+        border-radius: var(--radius-sm);
+        background: #fbfdff;
+      }
+
+      .conf-top {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+
+      .conf-label {
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .conf-percent {
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      .conf-reasons {
+        font-size: 12px;
+        color: #b45309;
+        margin-top: 8px;
+      }
+
+      .conf-note {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 6px;
+        line-height: 1.45;
+      }
+
+      .prio-explain {
+        font-size: 12px;
+        color: #475569;
+        margin-top: 6px;
+        padding: 8px 10px;
+        background: #ffffff;
+        border: 1px solid var(--soft-line);
+        border-radius: 8px;
+        white-space: pre-wrap;
+        line-height: 1.45;
+      }
+
+      @media (max-width: 720px) {
+        .ai-subgrid {
+          grid-template-columns: 1fr;
+        }
+      }
+
       @media (max-width: 1120px) {
         .layout {
           grid-template-columns: 1fr;
@@ -664,7 +909,10 @@
                 </div>
 
                 <div>
-                  <label id="campaignTypeLabel" for="campaignType">Loại chiến dịch</label>
+                  <div class="label-row">
+                    <label id="campaignTypeLabel" for="campaignType">Loại chiến dịch</label>
+                    <button type="button" class="ai-explain" data-field="campaign_type">❓ AI</button>
+                  </div>
                   <div class="input-wrap">
                     <span class="input-icon">◎</span>
                     <select id="campaignType">
@@ -676,7 +924,10 @@
                 </div>
 
                 <div>
-                  <label id="objectiveLabel" for="objective">Objective</label>
+                  <div class="label-row">
+                    <label id="objectiveLabel" for="objective">Objective</label>
+                    <button type="button" class="ai-explain" data-field="objective">❓ AI</button>
+                  </div>
                   <div class="input-wrap">
                     <span class="input-icon">◎</span>
                     <select id="objective">
@@ -688,7 +939,10 @@
                 </div>
 
                 <div id="leadFormIdField">
-                  <label id="leadFormIdLabel" for="leadFormId">Lead Form ID (cho chiến dịch thu lead)</label>
+                  <div class="label-row">
+                    <label id="leadFormIdLabel" for="leadFormId">Lead Form ID (cho chiến dịch thu lead)</label>
+                    <button type="button" class="ai-explain" data-field="lead_form">❓ AI</button>
+                  </div>
                   <div class="input-wrap">
                     <span class="input-icon">▤</span>
                     <input id="leadFormId" placeholder="VD: 1234567890 (form của page)" />
@@ -697,7 +951,10 @@
                 </div>
 
                 <div class="full">
-                  <label id="targetLocationLabel">Khu vực target (cho thu lead theo dự án)</label>
+                  <div class="label-row">
+                    <label id="targetLocationLabel">Khu vực target (cho thu lead theo dự án)</label>
+                    <button type="button" class="ai-explain" data-field="targeting">❓ AI</button>
+                  </div>
                   <div class="form-grid">
                     <div>
                       <div class="input-wrap">
@@ -740,7 +997,10 @@
                 </div>
 
                 <div>
-                  <label id="defaultBudgetLabel" for="defaultBudget">Budget áp dụng cho tất cả pageId</label>
+                  <div class="label-row">
+                    <label id="defaultBudgetLabel" for="defaultBudget">Budget áp dụng cho tất cả pageId</label>
+                    <button type="button" class="ai-explain" data-field="daily_budget">❓ AI</button>
+                  </div>
                   <div class="input-wrap">
                     <span class="input-icon">$</span>
                     <input id="defaultBudget" type="number" min="1" value="100" placeholder="100" />
@@ -802,6 +1062,65 @@
                   ⤓ Export CSV
                 </button>
               </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon">🔍</div>
+                <div>
+                  <h2 class="card-title">Campaign Audit<span id="aiStatusBadge" class="ai-badge off">AI: off</span></h2>
+                  <p class="card-subtitle">Kiểm tra sức khỏe chiến dịch: Health, Confidence, Checklist, Priority, Explain — và trợ lý AI.</p>
+                </div>
+              </div>
+
+              <div class="actions">
+                <button id="aiReviewBtn" class="primary" type="button">🔍 Chạy Campaign Audit</button>
+                <button id="aiClearBtn" class="ghost" type="button">✕ Xóa kết quả</button>
+              </div>
+
+              <div id="auditMeta" class="hint" style="display:none;"></div>
+
+              <div class="actions" id="auditResultActions" style="display:none;">
+                <button id="auditPdfBtn" class="secondary" type="button">🖨 Tải PDF</button>
+                <button id="auditPngBtn" class="secondary" type="button">🖼 Download PNG</button>
+                <button id="auditShareBtn" class="ghost" type="button">🔗 Copy link</button>
+                <button id="auditHistoryBtn" class="ghost" type="button">🕘 Lịch sử</button>
+              </div>
+
+              <div id="auditHistory" class="ai-output" style="display:none;"></div>
+
+              <div class="ai-subgrid" style="margin-top:14px;">
+                <div>
+                  <label for="aiIndustry">Gợi ý target — Ngành/sản phẩm</label>
+                  <input id="aiIndustry" placeholder="VD: Bất động sản căn hộ Đà Nẵng" />
+                </div>
+                <div>
+                  <label for="aiTargetLocation">Khu vực</label>
+                  <input id="aiTargetLocation" placeholder="VD: Đà Nẵng, bán kính 10km" />
+                </div>
+              </div>
+              <div class="actions" style="grid-template-columns:1fr;">
+                <button id="aiSuggestTargetBtn" class="secondary" type="button">🎯 AI Gợi ý Target</button>
+              </div>
+
+              <div style="margin-top:14px;">
+                <label for="aiProduct">Viết content — Sản phẩm/dự án</label>
+                <input id="aiProduct" placeholder="VD: Căn hộ 2PN view sông, dự án ABC Đà Nẵng" />
+              </div>
+              <div class="actions" style="grid-template-columns:1fr;">
+                <button id="aiContentBtn" class="secondary" type="button">✍ AI Viết Content</button>
+              </div>
+
+              <div id="aiOutput" class="ai-output" style="display:none;"></div>
+
+              <div style="margin-top:16px;">
+                <label for="aiChatInput">AI Chat tư vấn</label>
+                <div class="ai-chat-box">
+                  <input id="aiChatInput" placeholder="VD: Tôi muốn chạy quảng cáo bán đất ở Quảng Nam" />
+                  <button id="aiChatSendBtn" class="primary" type="button">Gửi</button>
+                </div>
+              </div>
+              <div id="aiChatLog" class="ai-output" style="display:none;"></div>
             </div>
 
             <div class="card">

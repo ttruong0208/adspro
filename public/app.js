@@ -1365,9 +1365,453 @@ els.permissionInput?.addEventListener('blur', () => {
   els.permissionInput.value = normalized;
 });
 
+// ---------------------------------------------------------------------------
+// AI Ads Assistant (frontend)
+// ---------------------------------------------------------------------------
+const aiEls = {
+  output: $('aiOutput'),
+  chatLog: $('aiChatLog'),
+  statusBadge: $('aiStatusBadge'),
+  reviewBtn: $('aiReviewBtn'),
+  clearBtn: $('aiClearBtn'),
+  suggestBtn: $('aiSuggestTargetBtn'),
+  contentBtn: $('aiContentBtn'),
+  chatSendBtn: $('aiChatSendBtn'),
+  chatInput: $('aiChatInput'),
+  industry: $('aiIndustry'),
+  targetLocation: $('aiTargetLocation'),
+  product: $('aiProduct'),
+  auditMeta: $('auditMeta'),
+  auditResultActions: $('auditResultActions'),
+  auditHistory: $('auditHistory'),
+  auditPdfBtn: $('auditPdfBtn'),
+  auditPngBtn: $('auditPngBtn'),
+  auditShareBtn: $('auditShareBtn'),
+  auditHistoryBtn: $('auditHistoryBtn')
+};
+
+const aiChatHistory = [];
+let lastReview = null;
+
+function showAiOutput(text) {
+  if (!aiEls.output) return;
+  aiEls.output.style.display = 'block';
+  aiEls.output.textContent = text;
+}
+
+function showAiOutputHtml(html) {
+  if (!aiEls.output) return;
+  aiEls.output.style.display = 'block';
+  aiEls.output.innerHTML = html;
+}
+
+function healthColor(score) {
+  if (score >= 85) return '#16a34a';
+  if (score >= 65) return '#22c55e';
+  if (score >= 45) return '#f59e0b';
+  return '#dc2626';
+}
+
+function renderCheckStatus(status) {
+  const map = {
+    pass: { icon: '✔', cls: 'check-pass', text: 'OK' },
+    fail: { icon: '✘', cls: 'check-fail', text: 'Thiếu' },
+    warn: { icon: '!', cls: 'check-warn', text: 'Lưu ý' },
+    na: { icon: '–', cls: 'check-na', text: 'Không áp dụng' },
+    unknown: { icon: '?', cls: 'check-unknown', text: 'Chưa kiểm tra' }
+  };
+  return map[status] || map.unknown;
+}
+
+function renderReviewDashboard(data) {
+  const score = Number(data.score) || 0;
+  const color = healthColor(score);
+  const pct = Math.max(0, Math.min(100, score));
+
+  const prioHtml = (data.priorities || [])
+    .map((p, i) => {
+      const lvl = p.level === 'high' ? 'high' : p.level === 'medium' ? 'medium' : 'low';
+      const lvlText = lvl === 'high' ? '🔴 Cao' : lvl === 'medium' ? '🟡 Trung bình' : '🟢 Thấp';
+      const explainBtn = p.explain
+        ? `<button type="button" class="ai-explain prio-explain-btn" data-idx="${i}">Giải thích</button>`
+        : '';
+      const explainBox = p.explain
+        ? `<div class="prio-explain" data-idx="${i}" style="display:none;">${escapeHtml(p.explain)}</div>`
+        : '';
+      return `
+        <li class="prio-item">
+          <span class="prio-dot prio-${lvl}"></span>
+          <span style="flex:1;">
+            <span class="prio-title">${escapeHtml(lvlText)} — ${escapeHtml(p.title || '')}</span>
+            ${explainBtn}<br/>
+            <span class="prio-action">${escapeHtml(p.action || '')}</span>
+            ${explainBox}
+          </span>
+        </li>`;
+    })
+    .join('');
+
+  const conf = data.confidence || null;
+  const confColor = conf ? healthColor(conf.percent) : '#94a3b8';
+  const confReasons = conf && conf.reasons?.length
+    ? `<div class="conf-reasons">Lý do: ${conf.reasons.map((r) => escapeHtml(r)).join(', ')}</div>`
+    : '';
+  const confHtml = conf
+    ? `
+      <div class="conf-wrap">
+        <div class="conf-top">
+          <span class="conf-label">Confidence (độ tin dựa trên dữ liệu)</span>
+          <span class="conf-percent" style="color:${confColor};">${conf.percent}%</span>
+        </div>
+        <div class="health-bar"><div class="health-bar-fill" style="width:${conf.percent}%;background:${confColor};"></div></div>
+        ${confReasons}
+        ${conf.note ? `<div class="conf-note">${escapeHtml(conf.note)}</div>` : ''}
+      </div>`
+    : '';
+
+  const checkHtml = (data.checklist || [])
+    .map((c) => {
+      const s = renderCheckStatus(c.status);
+      return `<li class="check-item ${s.cls}">${s.icon} ${escapeHtml(c.label)} <span style="font-weight:600;">(${s.text})</span></li>`;
+    })
+    .join('');
+
+  const aiSummaryHtml = data.aiSummary
+    ? `<div class="ai-section-title">Nhận xét AI</div><div style="font-size:12px;white-space:pre-wrap;line-height:1.5;">${escapeHtml(data.aiSummary)}</div>`
+    : '';
+
+  const goodsHtml = (data.goods || []).length
+    ? `<div class="ai-section-title">Điểm ổn</div><ul class="check-list">${(data.goods || [])
+        .map((g) => `<li class="check-item check-pass">✔ ${escapeHtml(g)}</li>`)
+        .join('')}</ul>`
+    : '';
+
+  return `
+    <div class="health-wrap">
+      <div class="health-top">
+        <span class="health-score" style="color:${color};">${score}/100</span>
+        <span class="health-grade">Campaign Health — ${escapeHtml(data.grade || '')}</span>
+      </div>
+      <div class="health-bar"><div class="health-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+    </div>
+
+    ${confHtml}
+
+    ${prioHtml ? `<div class="ai-section-title">Ưu tiên xử lý (làm gì trước)</div><ul class="prio-list">${prioHtml}</ul>` : ''}
+
+    <div class="ai-section-title">Checklist</div>
+    <ul class="check-list">${checkHtml}</ul>
+
+    ${goodsHtml}
+    ${aiSummaryHtml}
+  `;
+}
+
+async function updateAiBadge() {
+  if (!aiEls.statusBadge) return;
+  try {
+    const data = await apiRequest('/ai/status', { method: 'GET', retries: 1, timeoutMs: 10000 });
+    const on = Boolean(data?.configured);
+    aiEls.statusBadge.textContent = on ? `AI: ${data.provider}` : 'AI: rule-based';
+    aiEls.statusBadge.className = `ai-badge ${on ? 'on' : 'off'}`;
+  } catch {
+    aiEls.statusBadge.textContent = 'AI: off';
+    aiEls.statusBadge.className = 'ai-badge off';
+  }
+}
+
+function formatExplanation(exp) {
+  if (!exp) return 'Không có dữ liệu.';
+  if (exp.freeText) return `📘 ${exp.title || ''}\n\n${exp.freeText}`;
+  const lines = [`📘 ${exp.title || ''}`, ''];
+  if (exp.definition) lines.push(`• Định nghĩa: ${exp.definition}`);
+  if (exp.whenToUse) lines.push(`• Khi nào dùng: ${exp.whenToUse}`);
+  if (exp.example) lines.push(`• Ví dụ: ${exp.example}`);
+  if (exp.commonMistakes) lines.push(`• Lỗi hay gặp: ${exp.commonMistakes}`);
+  return lines.join('\n');
+}
+
+async function explainFieldAi(field) {
+  showAiOutput('Đang tải giải thích...');
+  try {
+    const data = await apiRequest('/ai/explain-field', {
+      method: 'POST',
+      body: { field },
+      retries: 1,
+      timeoutMs: 30000
+    });
+    if (!data.ok) {
+      showAiOutput(data.error || 'Không có giải thích cho trường này.');
+      return;
+    }
+    showAiOutput(formatExplanation(data.explanation));
+  } catch (err) {
+    showAiOutput(`Lỗi: ${err.message}`);
+  }
+}
+
+function collectCampaignConfigForReview() {
+  const parsed = parseBatchInput(els.batchInput?.value || '');
+  const campaignType = String(els.campaignType?.value || 'messenger');
+  return {
+    campaignType,
+    dailyBudget: Number(els.defaultBudget?.value || 0),
+    leadFormId: String(els.leadFormId?.value || '').trim(),
+    objective: els.objective?.value || '',
+    optimizationGoal: '',
+    postId: String(els.postId?.value || '').trim(),
+    targetLatitude: String(els.targetLatitude?.value || '').trim(),
+    targetLongitude: String(els.targetLongitude?.value || '').trim(),
+    targetRadiusKm: String(els.targetRadiusKm?.value || '').trim(),
+    pageCount: parsed.items.length
+  };
+}
+
+async function aiReview() {
+  showAiOutput('Đang review chiến dịch...');
+  try {
+    const cfg = collectCampaignConfigForReview();
+    const data = await apiRequest('/ai/review-campaign', {
+      method: 'POST',
+      body: cfg,
+      retries: 1,
+      timeoutMs: 40000
+    });
+    if (!data.ok) {
+      showAiOutput(data.error || 'Review lỗi.');
+      return;
+    }
+
+    showAiOutputHtml(renderReviewDashboard(data));
+
+    lastReview = {
+      id: data.reviewId || null,
+      reviewNumber: data.reviewNumber || null,
+      shareUrl: data.shareUrl || null,
+      createdAt: data.createdAt || null
+    };
+
+    if (aiEls.auditMeta) {
+      if (lastReview.reviewNumber) {
+        const dateStr = lastReview.createdAt
+          ? new Date(lastReview.createdAt).toLocaleString('vi-VN')
+          : '';
+        aiEls.auditMeta.style.display = 'block';
+        aiEls.auditMeta.textContent = `Review #${lastReview.reviewNumber}${dateStr ? ' • ' + dateStr : ''}`;
+      } else {
+        aiEls.auditMeta.style.display = 'none';
+      }
+    }
+    if (aiEls.auditResultActions) {
+      aiEls.auditResultActions.style.display = lastReview.id ? '' : 'none';
+    }
+  } catch (err) {
+    showAiOutput(`Lỗi: ${err.message}`);
+  }
+}
+
+function loadHtml2Canvas() {
+  return new Promise((resolve, reject) => {
+    if (window.html2canvas) return resolve(window.html2canvas);
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    script.onload = () => resolve(window.html2canvas);
+    script.onerror = () => reject(new Error('Không tải được thư viện tạo ảnh (cần internet).'));
+    document.head.appendChild(script);
+  });
+}
+
+async function auditDownloadPng() {
+  if (!aiEls.output || aiEls.output.style.display === 'none') {
+    showAiOutput('Chạy Campaign Audit trước khi tải ảnh.');
+    return;
+  }
+  try {
+    const html2canvas = await loadHtml2Canvas();
+    const canvas = await html2canvas(aiEls.output, { backgroundColor: '#ffffff', scale: 2 });
+    const link = document.createElement('a');
+    link.download = `campaign-audit${lastReview?.reviewNumber ? '-' + lastReview.reviewNumber : ''}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch (err) {
+    showAiOutput(`Lỗi tạo ảnh: ${err.message}`);
+  }
+}
+
+function auditOpenPdf() {
+  if (!lastReview?.shareUrl) {
+    showAiOutput('Chưa có link review. Chạy Campaign Audit trước.');
+    return;
+  }
+  window.open(lastReview.shareUrl, '_blank');
+}
+
+async function auditCopyShare() {
+  if (!lastReview?.shareUrl) {
+    showAiOutput('Chưa có link chia sẻ. Chạy Campaign Audit trước.');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(lastReview.shareUrl);
+    if (aiEls.auditMeta) {
+      aiEls.auditMeta.style.display = 'block';
+      aiEls.auditMeta.textContent = `Đã copy link: ${lastReview.shareUrl}`;
+    }
+  } catch {
+    window.prompt('Copy link chia sẻ:', lastReview.shareUrl);
+  }
+}
+
+async function auditShowHistory() {
+  if (!aiEls.auditHistory) return;
+  aiEls.auditHistory.style.display = 'block';
+  aiEls.auditHistory.textContent = 'Đang tải lịch sử...';
+  try {
+    const data = await apiRequest('/audit/history?limit=50', { method: 'GET', retries: 1 });
+    const rows = data.rows || [];
+    if (!rows.length) {
+      aiEls.auditHistory.textContent = 'Chưa có lịch sử review.';
+      return;
+    }
+    aiEls.auditHistory.innerHTML = rows
+      .map((r) => {
+        const dateStr = r.createdAt ? new Date(r.createdAt).toLocaleString('vi-VN') : '';
+        const color = healthColor(Number(r.score) || 0);
+        const link = `${getBackendUrl()}/review/${r.id}`;
+        return `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed #e7edf5;">
+          <span>#${escapeHtml(String(r.reviewNumber || ''))} • ${escapeHtml(dateStr)}</span>
+          <span><b style="color:${color};">${escapeHtml(String(r.score ?? ''))}</b>/100 ${r.confidence != null ? `• Conf ${escapeHtml(String(r.confidence))}%` : ''} • <a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">mở</a></span>
+        </div>`;
+      })
+      .join('');
+  } catch (err) {
+    aiEls.auditHistory.textContent = `Lỗi tải lịch sử: ${err.message}`;
+  }
+}
+
+async function aiSuggestTarget() {
+  showAiOutput('Đang gợi ý target...');
+  try {
+    const data = await apiRequest('/ai/suggest-target', {
+      method: 'POST',
+      body: {
+        industry: String(aiEls.industry?.value || '').trim(),
+        location: String(aiEls.targetLocation?.value || '').trim()
+      },
+      retries: 1,
+      timeoutMs: 40000
+    });
+    if (!data.ok) {
+      showAiOutput(data.error || 'Không gợi ý được.');
+      return;
+    }
+    showAiOutput(`🎯 Gợi ý target:\n\n${data.suggestion}`);
+  } catch (err) {
+    showAiOutput(`Lỗi: ${err.message}`);
+  }
+}
+
+async function aiGenerateContent() {
+  const product = String(aiEls.product?.value || '').trim();
+  if (!product) {
+    showAiOutput('Nhập sản phẩm/dự án trước khi viết content.');
+    return;
+  }
+  showAiOutput('Đang viết content...');
+  try {
+    const data = await apiRequest('/ai/generate-content', {
+      method: 'POST',
+      body: { product },
+      retries: 1,
+      timeoutMs: 40000
+    });
+    if (!data.ok) {
+      showAiOutput(data.error || 'Không viết được content.');
+      return;
+    }
+    showAiOutput(`✍ Content:\n\n${data.content}`);
+  } catch (err) {
+    showAiOutput(`Lỗi: ${err.message}`);
+  }
+}
+
+function renderChatLog() {
+  if (!aiEls.chatLog) return;
+  aiEls.chatLog.style.display = 'block';
+  aiEls.chatLog.innerHTML = aiChatHistory
+    .map((m) => {
+      const who = m.role === 'assistant' ? '🤖 AI' : '🧑 Bạn';
+      return `<div style="margin-bottom:8px;"><b>${who}:</b> ${escapeHtml(m.content)}</div>`;
+    })
+    .join('');
+  aiEls.chatLog.scrollTop = aiEls.chatLog.scrollHeight;
+}
+
+async function aiSendChat() {
+  const msg = String(aiEls.chatInput?.value || '').trim();
+  if (!msg) return;
+
+  aiChatHistory.push({ role: 'user', content: msg });
+  aiEls.chatInput.value = '';
+  renderChatLog();
+
+  aiChatHistory.push({ role: 'assistant', content: 'Đang trả lời...' });
+  renderChatLog();
+
+  try {
+    const data = await apiRequest('/ai/chat', {
+      method: 'POST',
+      body: { messages: aiChatHistory.slice(0, -1), userMessage: msg },
+      retries: 1,
+      timeoutMs: 40000
+    });
+    aiChatHistory.pop();
+    aiChatHistory.push({
+      role: 'assistant',
+      content: data.ok ? data.reply || '(trống)' : data.error || 'Lỗi chat.'
+    });
+    renderChatLog();
+  } catch (err) {
+    aiChatHistory.pop();
+    aiChatHistory.push({ role: 'assistant', content: `Lỗi: ${err.message}` });
+    renderChatLog();
+  }
+}
+
+document.querySelectorAll('.ai-explain').forEach((btn) => {
+  btn.addEventListener('click', () => explainFieldAi(btn.getAttribute('data-field')));
+});
+aiEls.reviewBtn?.addEventListener('click', aiReview);
+aiEls.clearBtn?.addEventListener('click', () => {
+  if (aiEls.output) {
+    aiEls.output.style.display = 'none';
+    aiEls.output.textContent = '';
+  }
+});
+aiEls.suggestBtn?.addEventListener('click', aiSuggestTarget);
+aiEls.contentBtn?.addEventListener('click', aiGenerateContent);
+aiEls.chatSendBtn?.addEventListener('click', aiSendChat);
+aiEls.chatInput?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') aiSendChat();
+});
+aiEls.output?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.prio-explain-btn');
+  if (!btn) return;
+  const idx = btn.getAttribute('data-idx');
+  const box = aiEls.output.querySelector(`.prio-explain[data-idx="${idx}"]`);
+  if (box) {
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  }
+});
+aiEls.auditPdfBtn?.addEventListener('click', auditOpenPdf);
+aiEls.auditPngBtn?.addEventListener('click', auditDownloadPng);
+aiEls.auditShareBtn?.addEventListener('click', auditCopyShare);
+aiEls.auditHistoryBtn?.addEventListener('click', auditShowHistory);
+
 setupBackendUrlInput();
 setupOperatorInput();
 setupAdminKeyInput();
 applyI18n();
 checkFacebookAuth();
 refreshReportSummary();
+updateAiBadge();

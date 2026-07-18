@@ -33,6 +33,16 @@ import {
   getRunReportWithFilters,
   buildRunReportCsv
 } from './reportStore.js';
+import {
+  getAiInfo,
+  explainField,
+  reviewCampaign,
+  suggestTarget,
+  generateContent,
+  analyzeReport,
+  chat as aiChat
+} from './aiAssistant.js';
+import { saveAudit, getAudit, listAudits } from './auditStore.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -83,7 +93,8 @@ function shouldProtectPath(pathname = '') {
     pathname.startsWith('/adsets/') ||
     pathname.startsWith('/ads/') ||
     pathname.startsWith('/permissions/request-page-access') ||
-    pathname.startsWith('/jobs/create-adsets')
+    pathname.startsWith('/jobs/create-adsets') ||
+    pathname.startsWith('/ai/')
   );
 }
 
@@ -136,6 +147,7 @@ app.get('/auth/config', (req, res) => {
     hasMetaAppSecret: Boolean(FB_APP_SECRET),
     hasRedirectUriEnv: Boolean(FB_REDIRECT_URI_ENV),
     adminKeyRequired: Boolean(ADMIN_API_KEY),
+    ai: getAiInfo(),
     redirectUri,
     missing
   });
@@ -1168,6 +1180,249 @@ app.post('/auth/logout', (_req, res) => {
   res.clearCookie('fb_user_token', { path: '/' });
   res.clearCookie('fb_profile', { path: '/' });
   res.json({ ok: true });
+});
+
+function escapeHtmlServer(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function healthColorServer(score) {
+  const s = Number(score) || 0;
+  if (s >= 85) return '#16a34a';
+  if (s >= 65) return '#22c55e';
+  if (s >= 45) return '#f59e0b';
+  return '#dc2626';
+}
+
+function renderReviewPage(audit) {
+  const score = Number(audit.score) || 0;
+  const color = healthColorServer(score);
+  const conf = audit.confidence || {};
+  const confColor = healthColorServer(conf.percent || 0);
+  const dateStr = audit.createdAt ? new Date(audit.createdAt).toLocaleString('vi-VN') : '';
+
+  const checkIcon = (status) =>
+    ({ pass: '✔', fail: '✘', warn: '!', na: '–', unknown: '?' }[status] || '?');
+  const checkColor = (status) =>
+    ({ pass: '#16a34a', fail: '#dc2626', warn: '#c2410c', na: '#94a3b8', unknown: '#94a3b8' }[status] || '#94a3b8');
+
+  const prioHtml = (audit.priorities || [])
+    .map((p) => {
+      const dot = p.level === 'high' ? '#dc2626' : p.level === 'medium' ? '#f59e0b' : '#16a34a';
+      const lvlText = p.level === 'high' ? 'Cao' : p.level === 'medium' ? 'Trung bình' : 'Thấp';
+      return `
+        <li style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid #eef2f7;border-radius:10px;margin-bottom:8px;">
+          <span style="width:10px;height:10px;border-radius:999px;background:${dot};margin-top:5px;flex:0 0 auto;"></span>
+          <span>
+            <b>${escapeHtmlServer(lvlText)} — ${escapeHtmlServer(p.title || '')}</b><br/>
+            <span style="color:#475569;">${escapeHtmlServer(p.action || '')}</span>
+            ${p.explain ? `<div style="margin-top:6px;color:#475569;font-size:13px;white-space:pre-wrap;">${escapeHtmlServer(p.explain)}</div>` : ''}
+          </span>
+        </li>`;
+    })
+    .join('');
+
+  const checkHtml = (audit.checklist || [])
+    .map(
+      (c) =>
+        `<li style="color:${checkColor(c.status)};font-weight:700;margin-bottom:6px;">${checkIcon(c.status)} ${escapeHtmlServer(c.label)}</li>`
+    )
+    .join('');
+
+  const confReasons = (conf.reasons || []).length
+    ? `<div style="color:#b45309;font-size:13px;margin-top:8px;">Lý do: ${(conf.reasons || []).map(escapeHtmlServer).join(', ')}</div>`
+    : '';
+
+  return `<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Campaign Audit #${escapeHtmlServer(audit.reviewNumber || '')}</title>
+<style>
+  body { font-family: Inter, Arial, sans-serif; color:#0f172a; background:#f7f9fc; margin:0; padding:24px; }
+  .sheet { max-width:760px; margin:0 auto; background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:28px; box-shadow:0 14px 36px rgba(15,23,42,.08); }
+  .brand { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .brand .logo { width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;display:grid;place-items:center;font-size:20px; }
+  .brand b { font-size:18px; }
+  .muted { color:#64748b; font-size:13px; }
+  h1 { font-size:20px; margin:16px 0 4px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; }
+  .box { flex:1; min-width:220px; border:1px solid #e2e8f0; border-radius:12px; padding:14px; }
+  .score { font-size:30px; font-weight:900; }
+  .bar { height:12px; border-radius:999px; background:#eef2f7; overflow:hidden; margin-top:8px; }
+  .bar > div { height:100%; border-radius:999px; }
+  h2 { font-size:14px; margin:22px 0 8px; }
+  ul { list-style:none; padding:0; margin:0; }
+  .actions { max-width:760px; margin:16px auto 0; display:flex; gap:10px; }
+  button { padding:10px 16px;border:0;border-radius:10px;font-weight:800;cursor:pointer;background:#2563eb;color:#fff; }
+  @media print { .actions { display:none; } body { background:#fff; padding:0; } .sheet { border:0; box-shadow:none; } }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="brand">
+      <div class="logo">🤖</div>
+      <b>Bot Ads Manager — Campaign Audit</b>
+    </div>
+    <div class="muted">Review #${escapeHtmlServer(audit.reviewNumber || '')} • ${escapeHtmlServer(dateStr)} ${audit.adAccountId ? '• ' + escapeHtmlServer(audit.adAccountId) : ''} ${audit.operatorName ? '• ' + escapeHtmlServer(audit.operatorName) : ''}</div>
+
+    <div class="row">
+      <div class="box">
+        <div class="muted">Campaign Health</div>
+        <div class="score" style="color:${color};">${score}/100</div>
+        <div class="muted">${escapeHtmlServer(audit.grade || '')}</div>
+        <div class="bar"><div style="width:${Math.max(0, Math.min(100, score))}%;background:${color};"></div></div>
+      </div>
+      <div class="box">
+        <div class="muted">Confidence (độ tin dựa trên dữ liệu)</div>
+        <div class="score" style="color:${confColor};">${Number(conf.percent) || 0}%</div>
+        ${confReasons}
+      </div>
+    </div>
+
+    ${prioHtml ? `<h2>Ưu tiên xử lý</h2><ul>${prioHtml}</ul>` : ''}
+
+    <h2>Checklist</h2>
+    <ul>${checkHtml}</ul>
+
+    ${audit.aiSummary ? `<h2>Nhận xét</h2><div style="white-space:pre-wrap;line-height:1.5;font-size:14px;">${escapeHtmlServer(audit.aiSummary)}</div>` : ''}
+
+    <p class="muted" style="margin-top:20px;">Đây là gợi ý tổng quan, không phải cam kết kết quả. Quyết định cuối cùng thuộc về người chạy quảng cáo.</p>
+  </div>
+
+  <div class="actions">
+    <button onclick="window.print()">🖨 Tải PDF / In</button>
+  </div>
+</body>
+</html>`;
+}
+
+app.get('/ai/status', (_req, res) => {
+  res.json({ ok: true, ...getAiInfo() });
+});
+
+app.post('/ai/explain-field', async (req, res) => {
+  try {
+    const { field } = req.body || {};
+    if (!field) return res.status(400).json({ ok: false, error: 'Missing field' });
+    const data = await explainField({ field });
+    res.json(data);
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message || 'Explain failed' });
+  }
+});
+
+app.post('/ai/review-campaign', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = await reviewCampaign(body);
+
+    if (data.ok && body.save !== false) {
+      try {
+        const saved = saveAudit({
+          score: data.score,
+          grade: data.grade,
+          bar: data.bar,
+          confidence: data.confidence,
+          priorities: data.priorities,
+          checklist: data.checklist,
+          goods: data.goods,
+          warnings: data.warnings,
+          aiSummary: data.aiSummary || null,
+          operatorName: String(req.headers['x-operator-name'] || body.operatorName || '').trim(),
+          adAccountId: String(body.adAccountId || '').trim(),
+          campaignType: body.campaignType || 'messenger'
+        });
+        data.reviewId = saved.id;
+        data.reviewNumber = saved.reviewNumber;
+        data.createdAt = saved.createdAt;
+        const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+        data.shareUrl = `${proto}://${req.get('host')}/review/${saved.id}`;
+      } catch {
+        // Non-fatal: audit persistence may be unavailable on serverless.
+      }
+    }
+
+    res.json(data);
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message || 'Review failed' });
+  }
+});
+
+app.get('/audit/history', (req, res) => {
+  try {
+    const rows = listAudits(Number(req.query.limit || 50));
+    res.json({ ok: true, count: rows.length, rows });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message || 'Cannot read history' });
+  }
+});
+
+app.get('/audit/:id', (req, res) => {
+  try {
+    const audit = getAudit(req.params.id);
+    if (!audit) return res.status(404).json({ ok: false, error: 'Not found' });
+    res.json({ ok: true, audit });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message || 'Cannot read audit' });
+  }
+});
+
+app.get('/review/:id', (req, res) => {
+  const audit = getAudit(req.params.id);
+  if (!audit) {
+    return res.status(404).send('<h1>Review not found</h1>');
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(renderReviewPage(audit));
+});
+
+app.post('/ai/suggest-target', async (req, res) => {
+  try {
+    const { industry, location, note } = req.body || {};
+    const data = await suggestTarget({ industry, location, note });
+    res.status(data.ok ? 200 : 400).json(data);
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message || 'Suggest failed' });
+  }
+});
+
+app.post('/ai/generate-content', async (req, res) => {
+  try {
+    const { product, tone, extra } = req.body || {};
+    if (!product) return res.status(400).json({ ok: false, error: 'Missing product' });
+    const data = await generateContent({ product, tone, extra });
+    res.status(data.ok ? 200 : 400).json(data);
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message || 'Generate failed' });
+  }
+});
+
+app.post('/ai/analyze-report', async (req, res) => {
+  try {
+    const { metrics, note } = req.body || {};
+    const data = await analyzeReport({ metrics: metrics || {}, note });
+    res.status(data.ok ? 200 : 400).json(data);
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message || 'Analyze failed' });
+  }
+});
+
+app.post('/ai/chat', async (req, res) => {
+  try {
+    const { messages, userMessage } = req.body || {};
+    if (!userMessage) return res.status(400).json({ ok: false, error: 'Missing userMessage' });
+    const data = await aiChat({ messages: messages || [], userMessage });
+    res.status(data.ok ? 200 : 400).json(data);
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message || 'Chat failed' });
+  }
 });
 
 app.listen(port, () => {
