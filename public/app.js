@@ -1471,11 +1471,11 @@ function healthColor(score) {
 
 function renderCheckStatus(status) {
   const map = {
-    pass: { icon: '✔', cls: 'check-pass', text: 'OK' },
-    fail: { icon: '✘', cls: 'check-fail', text: 'Thiếu' },
-    warn: { icon: '!', cls: 'check-warn', text: 'Lưu ý' },
-    na: { icon: '–', cls: 'check-na', text: 'Không áp dụng' },
-    unknown: { icon: '?', cls: 'check-unknown', text: 'Chưa kiểm tra' }
+    pass: { dot: '🟢', cls: 'check-pass', text: 'OK' },
+    warn: { dot: '🟡', cls: 'check-warn', text: 'Cần lưu ý' },
+    fail: { dot: '🔴', cls: 'check-fail', text: 'Thiếu' },
+    na: { dot: '⚪', cls: 'check-na', text: 'Không áp dụng' },
+    unknown: { dot: '⚪', cls: 'check-unknown', text: 'Chưa kiểm tra' }
   };
   return map[status] || map.unknown;
 }
@@ -1511,25 +1511,27 @@ function renderReviewDashboard(data) {
   const conf = data.confidence || null;
   const confColor = conf ? healthColor(conf.percent) : '#94a3b8';
   const confReasons = conf && conf.reasons?.length
-    ? `<div class="conf-reasons">Lý do: ${conf.reasons.map((r) => escapeHtml(r)).join(', ')}</div>`
+    ? `<div class="conf-reasons"><b>Thiếu dữ liệu:</b><ul class="conf-missing">${conf.reasons
+        .map((r) => `<li>${escapeHtml(r)}</li>`)
+        .join('')}</ul></div>`
     : '';
   const confHtml = conf
     ? `
       <div class="conf-wrap">
         <div class="conf-top">
-          <span class="conf-label">Confidence (độ tin dựa trên dữ liệu)</span>
+          <span class="conf-label">Analysis Confidence <span style="font-weight:600;color:var(--muted);">(độ tin cậy của AI)</span></span>
           <span class="conf-percent" style="color:${confColor};">${conf.percent}%</span>
         </div>
         <div class="health-bar"><div class="health-bar-fill" data-w="${conf.percent}" style="width:0%;background:${confColor};"></div></div>
         ${confReasons}
-        ${conf.note ? `<div class="conf-note">${escapeHtml(conf.note)}</div>` : ''}
+        ${conf.note ? `<div class="conf-note">ⓘ ${escapeHtml(conf.note)}</div>` : ''}
       </div>`
     : '';
 
   const checkHtml = (data.checklist || [])
     .map((c) => {
       const s = renderCheckStatus(c.status);
-      return `<li class="check-item ${s.cls}">${s.icon} ${escapeHtml(c.label)} <span style="font-weight:600;">(${s.text})</span></li>`;
+      return `<li class="check-item ${s.cls}">${s.dot} ${escapeHtml(c.label)} <span style="font-weight:600;opacity:0.75;">${s.text}</span></li>`;
     })
     .join('');
 
@@ -1539,17 +1541,38 @@ function renderReviewDashboard(data) {
 
   const goodsHtml = (data.goods || []).length
     ? `<div class="ai-section-title">Điểm ổn</div><ul class="check-list">${(data.goods || [])
-        .map((g) => `<li class="check-item check-pass">✔ ${escapeHtml(g)}</li>`)
+        .map((g) => `<li class="check-item check-pass">🟢 ${escapeHtml(g)}</li>`)
         .join('')}</ul>`
+    : '';
+
+  const readyIcon = score >= 65 ? '✓' : score >= 45 ? '⚠' : '✕';
+  const bd = Array.isArray(data.breakdown) ? data.breakdown : [];
+  const bdSum = bd.reduce((s, b) => s + (Number(b.points) || 0), 0);
+  const breakdownHtml = bd.length
+    ? `
+      <button type="button" class="score-why-btn">📋 Vì sao được ${score} điểm?</button>
+      <div class="score-why" style="display:none;">
+        ${bd
+          .map((b) => {
+            const pts = Number(b.points) || 0;
+            const max = Number(b.max) || 0;
+            const c = pts >= max ? '#16a34a' : pts > 0 ? '#f59e0b' : '#dc2626';
+            return `<div class="score-why-row"><span>${escapeHtml(b.label)}</span><b style="color:${c};">+${pts}</b></div>`;
+          })
+          .join('')}
+        <div class="score-why-row score-why-total"><span>Tổng</span><b>${bdSum}/100</b></div>
+      </div>`
     : '';
 
   return `
     <div class="health-wrap">
+      <div class="ai-section-title" style="margin-top:0;">Setup Score <span style="font-weight:600;color:var(--muted);">(trước khi chạy)</span></div>
       <div class="health-top">
         <span class="health-score" data-target="${score}" style="color:${color};">${score}/100</span>
-        <span class="health-grade">Campaign Health — ${escapeHtml(data.grade || '')}</span>
+        <span class="health-grade">${readyIcon} ${escapeHtml(data.readiness || data.grade || '')}</span>
       </div>
       <div class="health-bar"><div class="health-bar-fill" data-w="${pct}" style="width:${lastHealthScore}%;background:${color};"></div></div>
+      ${breakdownHtml}
     </div>
 
     ${confHtml}
@@ -1886,6 +1909,12 @@ aiEls.chatInput?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') aiSendChat();
 });
 aiEls.auditBody?.addEventListener('click', (e) => {
+  const whyBtn = e.target.closest('.score-why-btn');
+  if (whyBtn) {
+    const box = aiEls.auditBody.querySelector('.score-why');
+    if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    return;
+  }
   const btn = e.target.closest('.prio-explain-btn');
   if (!btn) return;
   const idx = btn.getAttribute('data-idx');

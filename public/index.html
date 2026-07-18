@@ -921,6 +921,69 @@
         line-height: 1.45;
       }
 
+      .conf-missing {
+        list-style: none;
+        margin: 4px 0 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 6px;
+      }
+
+      .conf-missing li {
+        font-size: 11px;
+        font-weight: 700;
+        color: #b45309;
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 999px;
+        padding: 1px 8px;
+      }
+
+      /* Score breakdown (Vì sao được X điểm) */
+      .score-why-btn {
+        width: auto;
+        margin-top: 10px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 800;
+        border-radius: 999px;
+        background: var(--primary-soft);
+        color: var(--primary);
+        border: 1px solid #dbeafe;
+      }
+
+      .score-why-btn:hover {
+        background: #dbeafe;
+      }
+
+      .score-why {
+        margin-top: 8px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: #fff;
+      }
+
+      .score-why-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        padding: 4px 0;
+        border-bottom: 1px dashed #eef2f7;
+      }
+
+      .score-why-row:last-child {
+        border-bottom: 0;
+      }
+
+      .score-why-total {
+        margin-top: 2px;
+        border-top: 2px solid var(--line);
+        font-weight: 900;
+      }
+
       .prio-explain {
         font-size: 12px;
         color: #475569;

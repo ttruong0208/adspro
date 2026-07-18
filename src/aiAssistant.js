@@ -289,7 +289,6 @@ export async function reviewCampaign(config = {}) {
   const hasCustomLocation =
     Number.isFinite(Number(targetLatitude)) && Number.isFinite(Number(targetLongitude));
 
-  let score = 100;
   const warnings = [];
   const goods = [];
   const priorities = [];
@@ -299,14 +298,12 @@ export async function reviewCampaign(config = {}) {
   if (!Number.isFinite(budget) || budget <= 0) {
     warnings.push({ level: 'error', message: 'Chưa nhập ngân sách hợp lệ.' });
     addPriority('high', 'Ngân sách chưa hợp lệ', 'Nhập ngân sách/ngày > 0 trước khi chạy.');
-    score -= 25;
   } else if (budget < 50000) {
     warnings.push({
       level: 'warn',
       message: 'Ngân sách hơi thấp (nếu tài khoản VND). Facebook có thể không đủ dữ liệu để tối ưu.'
     });
     addPriority('medium', 'Ngân sách thấp', 'Cân nhắc tăng ngân sách để đủ dữ liệu tối ưu (tùy tài khoản).');
-    score -= 12;
   } else {
     goods.push('Ngân sách ở mức chạy được.');
   }
@@ -314,7 +311,6 @@ export async function reviewCampaign(config = {}) {
   if (isLeadForm && !leadFormId) {
     warnings.push({ level: 'error', message: 'Chiến dịch thu lead nhưng chưa có Lead Form ID.' });
     addPriority('high', 'Thiếu Lead Form', 'Nhập Lead Form ID (mỗi Page 1 form) trước khi chạy thu lead.');
-    score -= 25;
   }
 
   if (isLeadForm && objective && objective !== 'OUTCOME_LEADS') {
@@ -323,7 +319,6 @@ export async function reviewCampaign(config = {}) {
       message: `Objective "${objective}" không khớp chiến dịch thu lead (nên là OUTCOME_LEADS).`
     });
     addPriority('medium', 'Objective không khớp', 'Để trống objective (tự động) hoặc chọn OUTCOME_LEADS.');
-    score -= 8;
   }
 
   if (!hasCustomLocation) {
@@ -332,19 +327,15 @@ export async function reviewCampaign(config = {}) {
       message: 'Chưa đặt khu vực target — đang dùng khu vực mặc định. BĐS nên target đúng quanh dự án.'
     });
     addPriority('medium', 'Chưa đặt khu vực target', 'Nhập tọa độ dự án + bán kính để target đúng khu vực.');
-    score -= 12;
   } else if (!Number.isFinite(radius) || radius <= 0) {
     warnings.push({ level: 'warn', message: 'Có tọa độ nhưng chưa đặt bán kính hợp lệ.' });
     addPriority('medium', 'Bán kính chưa hợp lệ', 'Đặt bán kính (km) hợp lệ, VD 5–15km.');
-    score -= 6;
   } else if (radius > 50) {
     warnings.push({ level: 'warn', message: `Bán kính ${radius}km khá rộng, dễ loãng đối tượng.` });
     addPriority('low', 'Bán kính rộng', 'Cân nhắc thu hẹp bán kính để đối tượng tập trung hơn.');
-    score -= 8;
   } else if (radius < 2) {
     warnings.push({ level: 'warn', message: `Bán kính ${radius}km khá hẹp, có thể ít người tiếp cận.` });
     addPriority('low', 'Bán kính hẹp', 'Cân nhắc mở rộng bán kính nếu tiếp cận quá ít.');
-    score -= 4;
   } else {
     goods.push('Khu vực target hợp lý.');
   }
@@ -365,8 +356,54 @@ export async function reviewCampaign(config = {}) {
     addPriority('low', 'Chạy số lượng lớn', 'Test vài Page trước khi chạy toàn bộ danh sách.');
   }
 
+  // Điểm cộng theo từng hạng mục (cộng dồn = Setup Score). Tổng tối đa = 100.
+  const breakdown = [];
+  const addBd = (label, points, max) => breakdown.push({ label, points, max });
+
+  if (Number.isFinite(budget) && budget > 0) {
+    addBd('Budget', budget < 50000 ? 12 : 20, 20);
+  } else {
+    addBd('Budget', 0, 20);
+  }
+
+  if (isLeadForm) {
+    addBd('Objective', !objective || objective === 'OUTCOME_LEADS' ? 15 : 8, 15);
+  } else {
+    addBd('Objective', 15, 15);
+  }
+
+  if (!hasCustomLocation) {
+    addBd('Target', 8, 20);
+  } else if (!Number.isFinite(radius) || radius <= 0) {
+    addBd('Target', 12, 20);
+  } else if (radius > 50 || radius < 2) {
+    addBd('Target', 15, 20);
+  } else {
+    addBd('Target', 20, 20);
+  }
+
+  if (isLeadForm) {
+    addBd('Lead Form', leadFormId ? 20 : 0, 20);
+  } else {
+    addBd('Creative', postId ? 20 : 12, 20);
+  }
+
+  addBd('Page List', Number(pageCount) > 0 ? 15 : 0, 15);
+  addBd('CTA', 10, 10);
+
+  let score = breakdown.reduce((sum, b) => sum + b.points, 0);
   score = Math.max(0, Math.min(100, score));
   const grade = score >= 85 ? 'Tốt' : score >= 65 ? 'Khá' : score >= 45 ? 'Cần cải thiện' : 'Rủi ro cao';
+
+  // Trạng thái sẵn sàng — gắn với Setup Score để KHÔNG mâu thuẫn với Confidence.
+  const readiness =
+    score >= 85
+      ? 'Sẵn sàng tạo chiến dịch'
+      : score >= 65
+        ? 'Cấu hình gần hoàn chỉnh'
+        : score >= 45
+          ? 'Cần bổ sung vài mục'
+          : 'Còn thiếu nhiều mục quan trọng';
 
   // Health bar (10 ô).
   const bar = { filled: Math.round(score / 10), total: 10 };
@@ -449,19 +486,20 @@ export async function reviewCampaign(config = {}) {
   const confidencePercent = Math.round((confidencePresent / confidenceSignals.length) * 100);
   const confidenceReasons = confidenceSignals
     .filter((s) => !s.ok)
-    .map((s) => `Thiếu ${s.label}`);
+    .map((s) => s.label);
 
   const confidence = {
     percent: confidencePercent,
     reasons: confidenceReasons,
-    note:
-      'Confidence phản ánh lượng dữ liệu đang có. Số liệu hiệu quả (CTR/CPL/Spend) chỉ có sau khi chạy, nên trước khi publish Confidence thường thấp — điều này bình thường.'
+    note: 'Sau khi campaign chạy, AI sẽ đánh giá chính xác hơn.'
   };
 
   const result = {
     ok: true,
     score,
     grade,
+    readiness,
+    breakdown,
     bar,
     confidence,
     priorities,

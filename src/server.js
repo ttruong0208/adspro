@@ -1207,7 +1207,9 @@ function renderReviewPage(audit) {
   const dateStr = audit.createdAt ? new Date(audit.createdAt).toLocaleString('vi-VN') : '';
 
   const checkIcon = (status) =>
-    ({ pass: '✔', fail: '✘', warn: '!', na: '–', unknown: '?' }[status] || '?');
+    ({ pass: '🟢', fail: '🔴', warn: '🟡', na: '⚪', unknown: '⚪' }[status] || '⚪');
+  const checkText = (status) =>
+    ({ pass: 'OK', fail: 'Thiếu', warn: 'Cần lưu ý', na: 'Không áp dụng', unknown: 'Chưa kiểm tra' }[status] || '');
   const checkColor = (status) =>
     ({ pass: '#16a34a', fail: '#dc2626', warn: '#c2410c', na: '#94a3b8', unknown: '#94a3b8' }[status] || '#94a3b8');
 
@@ -1230,12 +1232,23 @@ function renderReviewPage(audit) {
   const checkHtml = (audit.checklist || [])
     .map(
       (c) =>
-        `<li style="color:${checkColor(c.status)};font-weight:700;margin-bottom:6px;">${checkIcon(c.status)} ${escapeHtmlServer(c.label)}</li>`
+        `<li style="font-weight:700;margin-bottom:6px;">${checkIcon(c.status)} ${escapeHtmlServer(c.label)} <span style="color:${checkColor(c.status)};font-weight:600;">${escapeHtmlServer(checkText(c.status))}</span></li>`
     )
     .join('');
 
   const confReasons = (conf.reasons || []).length
-    ? `<div style="color:#b45309;font-size:13px;margin-top:8px;">Lý do: ${(conf.reasons || []).map(escapeHtmlServer).join(', ')}</div>`
+    ? `<div style="color:#b45309;font-size:13px;margin-top:8px;">Thiếu dữ liệu: ${(conf.reasons || []).map(escapeHtmlServer).join(', ')}</div>`
+    : '';
+
+  const bdHtml = (audit.breakdown || []).length
+    ? `<h2>Vì sao được ${score} điểm</h2><ul>${(audit.breakdown || [])
+        .map(
+          (b) =>
+            `<li style="display:flex;justify-content:space-between;border-bottom:1px dashed #eef2f7;padding:6px 0;"><span>${escapeHtmlServer(
+              b.label
+            )}</span><b>+${Number(b.points) || 0}</b></li>`
+        )
+        .join('')}</ul>`
     : '';
 
   return `<!doctype html>
@@ -1274,17 +1287,20 @@ function renderReviewPage(audit) {
 
     <div class="row">
       <div class="box">
-        <div class="muted">Campaign Health</div>
+        <div class="muted">Setup Score (trước khi chạy)</div>
         <div class="score" style="color:${color};">${score}/100</div>
-        <div class="muted">${escapeHtmlServer(audit.grade || '')}</div>
+        <div class="muted">${score >= 65 ? '✓' : score >= 45 ? '⚠' : '✕'} ${escapeHtmlServer(audit.readiness || audit.grade || '')}</div>
         <div class="bar"><div style="width:${Math.max(0, Math.min(100, score))}%;background:${color};"></div></div>
       </div>
       <div class="box">
-        <div class="muted">Confidence (độ tin dựa trên dữ liệu)</div>
+        <div class="muted">Analysis Confidence (độ tin cậy của AI)</div>
         <div class="score" style="color:${confColor};">${Number(conf.percent) || 0}%</div>
         ${confReasons}
+        ${conf.note ? `<div class="muted" style="margin-top:6px;">ⓘ ${escapeHtmlServer(conf.note)}</div>` : ''}
       </div>
     </div>
+
+    ${bdHtml}
 
     ${prioHtml ? `<h2>Ưu tiên xử lý</h2><ul>${prioHtml}</ul>` : ''}
 
@@ -1328,6 +1344,8 @@ app.post('/ai/review-campaign', async (req, res) => {
         const saved = saveAudit({
           score: data.score,
           grade: data.grade,
+          readiness: data.readiness,
+          breakdown: data.breakdown,
           bar: data.bar,
           confidence: data.confidence,
           priorities: data.priorities,
