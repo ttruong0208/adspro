@@ -125,8 +125,8 @@ const I18N = {
     defaultPageNameLabel: 'Page Name dùng chung',
     defaultPageNameHint: 'Nếu để trống, mỗi page sẽ tự dùng pageId làm pageName.',
     defaultPageNamePlaceholder: 'Để trống để lấy pageName = pageId',
-    defaultBudgetLabel: 'Budget áp dụng cho tất cả pageId',
-    defaultBudgetHint: 'TKQC USD: chọn VND → đổi sang USD. VD nhập 100000, tỷ giá 25000 → ≈ $4 → Meta nhận 400 cent.',
+    defaultBudgetLabel: 'Budget / ngày',
+    defaultBudgetHint: 'Chọn USD: nhập đô (1 = $1). Chọn VND: hiện tỷ giá, nhập tiền Việt rồi tool đổi sang USD. Dưới min sẽ báo đỏ.',
     operatorNameLabel: 'Operator (người chạy)',
     operatorNamePlaceholder: 'VD: Truong Nguyen',
     adminApiKeyLabel: 'Admin API Key (nếu bật bảo mật)',
@@ -252,8 +252,8 @@ const I18N = {
     defaultPageNameLabel: 'Default Page Name',
     defaultPageNameHint: 'If empty, each page uses its own pageId as name.',
     defaultPageNamePlaceholder: 'Leave empty to use pageName = pageId',
-    defaultBudgetLabel: 'Default budget for all page IDs',
-    defaultBudgetHint: 'USD ad account: pick VND→USD. E.g. 100000 VND at rate 25000 ≈ $4 → Meta gets 400 cents.',
+    defaultBudgetLabel: 'Daily budget',
+    defaultBudgetHint: 'USD: enter dollars (1 = $1). VND: show FX rate, convert to USD. Below min shows a red error.',
     operatorNameLabel: 'Operator',
     operatorNamePlaceholder: 'E.g. Truong Nguyen',
     adminApiKeyLabel: 'Admin API Key (if security enabled)',
@@ -959,7 +959,9 @@ function resolveMetaDailyBudget(rawAmount, currency, fxRate) {
 
   const mode = String(currency || 'USD').toUpperCase();
   const rate = Number(fxRate);
-  const safeRate = Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_USD_FX_RATE;
+  // Tỷ giá VND/USD tối thiểu hợp lý; nếu sai thì dùng mặc định 25000.
+  const safeRate =
+    Number.isFinite(rate) && rate >= 1000 ? rate : DEFAULT_USD_FX_RATE;
 
   if (mode === 'VND') {
     const usd = amount / safeRate;
@@ -971,7 +973,7 @@ function resolveMetaDailyBudget(rawAmount, currency, fxRate) {
       input: amount,
       currency: 'VND',
       fxRate: safeRate,
-      label: `${formatCurrency(amount)} VND ≈ $${usd.toFixed(2)} (gửi Meta ${cents} cent)`,
+      label: `${formatCurrency(amount)} VND ≈ $${formatUsd(usd)} (gửi Meta ${cents} cent)`,
       error: cents > 0 ? null : 'Sau quy đổi budget = 0'
     };
   }
@@ -986,7 +988,7 @@ function resolveMetaDailyBudget(rawAmount, currency, fxRate) {
     input: amount,
     currency: 'USD',
     fxRate: safeRate,
-    label: `$${Number(amount)} ≈ ${formatCurrency(vndEq)} VND (gửi Meta ${cents} cent)`,
+    label: `$${formatUsd(amount)} ≈ ${formatCurrency(vndEq)} VND (tỷ giá ${formatCurrency(safeRate)}) • gửi Meta ${cents} cent`,
     error: cents > 0 ? null : 'Budget không hợp lệ'
   };
 }
@@ -997,10 +999,17 @@ function getBudgetCurrency() {
 
 function getUsdFxRate() {
   const fromInput = Number(els.usdFxRate?.value);
-  if (Number.isFinite(fromInput) && fromInput > 0) return fromInput;
+  // Tỷ giá VND/USD hợp lệ thường > 10.000; tránh giá trị lỗi (1, 2...) làm quy đổi sai.
+  if (Number.isFinite(fromInput) && fromInput >= 1000) return fromInput;
   const saved = Number(localStorage.getItem(USD_FX_RATE_STORAGE_KEY));
-  if (Number.isFinite(saved) && saved > 0) return saved;
+  if (Number.isFinite(saved) && saved >= 1000) return saved;
   return DEFAULT_USD_FX_RATE;
+}
+
+function formatUsd(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return '0';
+  return n % 1 === 0 ? String(n) : n.toFixed(2);
 }
 
 function resolveCampaignMetaBudget(rawAmount) {
@@ -1021,12 +1030,13 @@ function applyBudgetMinError(el, resolved) {
   }
   const minCents = getEffectiveMinDailyCents();
   if (resolved.metaBudget < minCents) {
-    const minUsd = (minCents / 100).toFixed(2);
-    const needVnd = Math.ceil((minCents / 100) * (resolved.fxRate || getUsdFxRate()));
+    const minUsd = minCents / 100;
+    const rate = resolved.fxRate >= 1000 ? resolved.fxRate : getUsdFxRate();
+    const needVnd = Math.ceil(minUsd * rate);
     el.style.display = 'block';
     el.textContent =
-      `❌ Ngân sách không đủ (min quảng cáo ≈ $${minUsd} / ${formatCurrency(needVnd)} VND). ` +
-      `Hiện tại $${resolved.usd.toFixed(2)} < min.`;
+      `❌ Ngân sách không đủ — min quảng cáo ≈ $${formatUsd(minUsd)}` +
+      ` (≈ ${formatCurrency(needVnd)} VND). Bạn đang đặt $${formatUsd(resolved.usd)}.`;
     return false;
   }
   el.style.display = 'none';
@@ -2718,11 +2728,21 @@ function initBulkLauncher() {
 
 function setupBudgetCurrencyInputs() {
   const savedCur = localStorage.getItem(BUDGET_CURRENCY_STORAGE_KEY);
-  const savedFx = localStorage.getItem(USD_FX_RATE_STORAGE_KEY);
+  let savedFx = Number(localStorage.getItem(USD_FX_RATE_STORAGE_KEY));
+  if (!Number.isFinite(savedFx) || savedFx < 1000) {
+    savedFx = DEFAULT_USD_FX_RATE;
+    try {
+      localStorage.setItem(USD_FX_RATE_STORAGE_KEY, String(DEFAULT_USD_FX_RATE));
+    } catch {
+      // ignore
+    }
+  }
   if (els.budgetCurrency && savedCur && ['USD', 'VND'].includes(savedCur)) {
     els.budgetCurrency.value = savedCur;
   }
-  if (els.usdFxRate && savedFx) els.usdFxRate.value = savedFx;
+  if (els.usdFxRate) els.usdFxRate.value = String(savedFx);
+  const bulkFx = $('bulkUsdFxRate');
+  if (bulkFx) bulkFx.value = String(savedFx);
 
   applyCurrencyUi({
     currencySelect: els.budgetCurrency,
