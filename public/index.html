@@ -1450,27 +1450,26 @@
                     </div>
 
                     <div>
-                      <div class="label-row">
-                        <label id="defaultBudgetLabel" for="defaultBudget">Budget (áp dụng mọi pageId)</label>
-                        <button type="button" class="ai-explain" data-field="daily_budget" title="AI giải thích trường này">✨</button>
-                      </div>
-                      <div class="input-wrap">
-                        <span class="input-icon">$</span>
-                        <input id="defaultBudget" type="number" min="1" value="100000" placeholder="100000" />
-                      </div>
-                    </div>
-                    <div>
-                      <label for="budgetCurrency">Đơn vị nhập</label>
+                      <label for="budgetCurrency">Tiền tệ nhập</label>
                       <div class="input-wrap">
                         <span class="input-icon">◎</span>
                         <select id="budgetCurrency">
-                          <option value="VND" selected>VND → đổi sang USD</option>
-                          <option value="USD">USD (đô)</option>
-                          <option value="RAW">Gửi nguyên số (Meta)</option>
+                          <option value="USD" selected>USD ($)</option>
+                          <option value="VND">VND (đổi sang USD)</option>
                         </select>
                       </div>
                     </div>
-                    <div id="fxRateField">
+                    <div id="budgetAmountField">
+                      <div class="label-row">
+                        <label id="defaultBudgetLabel" for="defaultBudget">Budget / ngày</label>
+                        <button type="button" class="ai-explain" data-field="daily_budget" title="AI giải thích trường này">✨</button>
+                      </div>
+                      <div class="input-wrap">
+                        <span class="input-icon" id="budgetInputIcon">$</span>
+                        <input id="defaultBudget" type="number" min="0" step="0.01" value="1" placeholder="1" />
+                      </div>
+                    </div>
+                    <div id="fxRateField" style="display:none;">
                       <label for="usdFxRate">Tỷ giá (VND / 1 USD)</label>
                       <div class="input-wrap">
                         <span class="input-icon">⇄</span>
@@ -1479,7 +1478,8 @@
                     </div>
                     <div class="full">
                       <div id="budgetConvertPreview" class="hint" style="font-weight:800;color:var(--primary);"></div>
-                      <div id="defaultBudgetHint" class="hint">TKQC USD: chọn VND để nhập tiền Việt rồi tool đổi sang cent USD. VD 100000 VND ≈ $4 → gửi Meta 400.</div>
+                      <div id="budgetMinError" class="hint" style="display:none;font-weight:800;color:#b91c1c;"></div>
+                      <div id="defaultBudgetHint" class="hint">Chọn USD: nhập đô (VD 1 = $1). Chọn VND: hiện ô tỷ giá, nhập tiền Việt rồi tool đổi sang USD.</div>
                     </div>
                   </div>
                 </div>
@@ -1683,24 +1683,23 @@
                       </div>
                     </div>
                     <div>
-                      <label for="bulkBudget">Budget/ngày (mỗi Page, CBO)</label>
-                      <div class="input-wrap">
-                        <span class="input-icon">$</span>
-                        <input id="bulkBudget" type="number" min="1" value="100000" placeholder="100000" />
-                      </div>
-                    </div>
-                    <div>
-                      <label for="bulkBudgetCurrency">Đơn vị nhập</label>
+                      <label for="bulkBudgetCurrency">Tiền tệ nhập</label>
                       <div class="input-wrap">
                         <span class="input-icon">◎</span>
                         <select id="bulkBudgetCurrency">
-                          <option value="VND" selected>VND → đổi sang USD</option>
-                          <option value="USD">USD (đô)</option>
-                          <option value="RAW">Gửi nguyên số (Meta)</option>
+                          <option value="USD" selected>USD ($)</option>
+                          <option value="VND">VND (đổi sang USD)</option>
                         </select>
                       </div>
                     </div>
-                    <div id="bulkFxRateField">
+                    <div>
+                      <label for="bulkBudget">Budget/ngày (mỗi Page, CBO)</label>
+                      <div class="input-wrap">
+                        <span class="input-icon" id="bulkBudgetInputIcon">$</span>
+                        <input id="bulkBudget" type="number" min="0" step="0.01" value="1" placeholder="1" />
+                      </div>
+                    </div>
+                    <div id="bulkFxRateField" style="display:none;">
                       <label for="bulkUsdFxRate">Tỷ giá (VND / 1 USD)</label>
                       <div class="input-wrap">
                         <span class="input-icon">⇄</span>
@@ -1709,6 +1708,7 @@
                     </div>
                     <div class="full">
                       <div id="bulkBudgetConvertPreview" class="hint" style="font-weight:800;color:var(--primary);"></div>
+                      <div id="bulkBudgetMinError" class="hint" style="display:none;font-weight:800;color:#b91c1c;"></div>
                     </div>
                     <div>
                       <label for="bulkNamePrefix">Tiền tố tên chiến dịch</label>

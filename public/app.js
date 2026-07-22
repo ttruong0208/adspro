@@ -940,6 +940,16 @@ function formatCurrency(value) {
   return n.toLocaleString('vi-VN');
 }
 
+/** Fallback min Meta (USD cent) nếu API chưa trả — thường $1/ngày. */
+const DEFAULT_MIN_DAILY_BUDGET_CENTS = 100;
+
+let adAccountBudgetInfo = {
+  currency: null,
+  minDailyBudgetCents: DEFAULT_MIN_DAILY_BUDGET_CENTS,
+  loaded: false,
+  adAccountId: ''
+};
+
 /** Đổi budget người dùng nhập → số gửi Meta (USD account = cent). */
 function resolveMetaDailyBudget(rawAmount, currency, fxRate) {
   const amount = Number(rawAmount);
@@ -947,52 +957,42 @@ function resolveMetaDailyBudget(rawAmount, currency, fxRate) {
     return { ok: false, metaBudget: 0, usd: 0, error: 'Budget không hợp lệ' };
   }
 
-  const mode = String(currency || 'VND').toUpperCase();
+  const mode = String(currency || 'USD').toUpperCase();
   const rate = Number(fxRate);
   const safeRate = Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_USD_FX_RATE;
 
-  if (mode === 'RAW') {
+  if (mode === 'VND') {
+    const usd = amount / safeRate;
+    const cents = Math.round(usd * 100);
     return {
-      ok: true,
-      metaBudget: Math.round(amount),
-      usd: amount / 100,
-      input: amount,
-      currency: 'RAW',
-      fxRate: safeRate,
-      label: `Gửi nguyên ${formatCurrency(Math.round(amount))} (Meta)`
-    };
-  }
-
-  if (mode === 'USD') {
-    // Người dùng nhập số đô (VD 5 = $5) → Meta cần cent.
-    const cents = Math.round(amount * 100);
-    return {
-      ok: true,
+      ok: cents > 0,
       metaBudget: cents,
-      usd: amount,
+      usd,
       input: amount,
-      currency: 'USD',
+      currency: 'VND',
       fxRate: safeRate,
-      label: `$${amount} → gửi Meta ${cents} cent`
+      label: `${formatCurrency(amount)} VND ≈ $${usd.toFixed(2)} (gửi Meta ${cents} cent)`,
+      error: cents > 0 ? null : 'Sau quy đổi budget = 0'
     };
   }
 
-  // VND → USD cent
-  const usd = amount / safeRate;
-  const cents = Math.max(1, Math.round(usd * 100));
+  // USD: nhập đô (1 = $1, 0.5 = $0.50) → cent
+  const cents = Math.round(amount * 100);
+  const vndEq = Math.round(amount * safeRate);
   return {
-    ok: true,
+    ok: cents > 0,
     metaBudget: cents,
-    usd,
+    usd: amount,
     input: amount,
-    currency: 'VND',
+    currency: 'USD',
     fxRate: safeRate,
-    label: `${formatCurrency(amount)} VND ≈ $${usd.toFixed(2)} → gửi Meta ${cents} cent`
+    label: `$${Number(amount)} ≈ ${formatCurrency(vndEq)} VND (gửi Meta ${cents} cent)`,
+    error: cents > 0 ? null : 'Budget không hợp lệ'
   };
 }
 
 function getBudgetCurrency() {
-  return String(els.budgetCurrency?.value || localStorage.getItem(BUDGET_CURRENCY_STORAGE_KEY) || 'VND').toUpperCase();
+  return String(els.budgetCurrency?.value || localStorage.getItem(BUDGET_CURRENCY_STORAGE_KEY) || 'USD').toUpperCase();
 }
 
 function getUsdFxRate() {
@@ -1007,22 +1007,84 @@ function resolveCampaignMetaBudget(rawAmount) {
   return resolveMetaDailyBudget(rawAmount, getBudgetCurrency(), getUsdFxRate());
 }
 
-function updateBudgetConvertPreview() {
-  const raw = els.defaultBudget?.value;
-  const preview = els.budgetConvertPreview;
-  const fxField = els.fxRateField;
-  const currency = getBudgetCurrency();
+function getEffectiveMinDailyCents() {
+  const min = Number(adAccountBudgetInfo.minDailyBudgetCents);
+  return Number.isFinite(min) && min > 0 ? min : DEFAULT_MIN_DAILY_BUDGET_CENTS;
+}
 
+function applyBudgetMinError(el, resolved) {
+  if (!el) return true;
+  if (!resolved?.ok) {
+    el.style.display = 'block';
+    el.textContent = `❌ ${resolved?.error || 'Budget không hợp lệ'}`;
+    return false;
+  }
+  const minCents = getEffectiveMinDailyCents();
+  if (resolved.metaBudget < minCents) {
+    const minUsd = (minCents / 100).toFixed(2);
+    const needVnd = Math.ceil((minCents / 100) * (resolved.fxRate || getUsdFxRate()));
+    el.style.display = 'block';
+    el.textContent =
+      `❌ Ngân sách không đủ (min quảng cáo ≈ $${minUsd} / ${formatCurrency(needVnd)} VND). ` +
+      `Hiện tại $${resolved.usd.toFixed(2)} < min.`;
+    return false;
+  }
+  el.style.display = 'none';
+  el.textContent = '';
+  return true;
+}
+
+function applyCurrencyUi({ currencySelect, budgetInput, fxField, iconEl, isBulk = false }) {
+  const currency = String(currencySelect?.value || 'USD').toUpperCase();
   if (fxField) fxField.style.display = currency === 'VND' ? '' : 'none';
+  if (iconEl) iconEl.textContent = currency === 'VND' ? '₫' : '$';
+  if (budgetInput) {
+    if (currency === 'USD') {
+      budgetInput.step = '0.01';
+      budgetInput.placeholder = '1';
+      // Đổi từ VND sang USD: nếu số đang lớn kiểu VND thì reset về 1
+      const n = Number(budgetInput.value);
+      if (Number.isFinite(n) && n >= 100) budgetInput.value = '1';
+    } else {
+      budgetInput.step = '1000';
+      budgetInput.placeholder = '100000';
+      const n = Number(budgetInput.value);
+      if (Number.isFinite(n) && n > 0 && n < 100) {
+        budgetInput.value = String(Math.round(n * getUsdFxRate()));
+      } else if (!Number.isFinite(n) || n <= 0) {
+        budgetInput.value = '100000';
+      }
+    }
+  }
+}
+
+function updateBudgetConvertPreview() {
+  const currency = getBudgetCurrency();
+  if (els.fxRateField) els.fxRateField.style.display = currency === 'VND' ? '' : 'none';
+  const iconEl = $('budgetInputIcon');
+  if (iconEl) iconEl.textContent = currency === 'VND' ? '₫' : '$';
+
+  const preview = els.budgetConvertPreview;
+  const errEl = $('budgetMinError');
+  const amount = Number(els.defaultBudget?.value);
 
   if (!preview) return;
-  const amount = Number(raw);
   if (!Number.isFinite(amount) || amount <= 0) {
-    preview.textContent = 'Nhập budget để xem số gửi Meta.';
+    preview.textContent = currency === 'USD' ? 'Nhập số đô (VD 1 = $1/ngày).' : 'Nhập số VND để quy đổi sang USD.';
+    preview.style.color = 'var(--primary)';
+    if (errEl) {
+      errEl.style.display = 'none';
+      errEl.textContent = '';
+    }
     return;
   }
+
   const resolved = resolveCampaignMetaBudget(amount);
-  preview.textContent = resolved.ok ? `↔ ${resolved.label}` : resolved.error;
+  const okMin = applyBudgetMinError(errEl, resolved);
+  preview.style.color = okMin ? 'var(--primary)' : '#b91c1c';
+  preview.textContent = resolved.ok
+    ? `↔ ${resolved.label}${adAccountBudgetInfo.loaded ? ` • Min TK: $${(getEffectiveMinDailyCents() / 100).toFixed(2)}` : ''}`
+    : resolved.error;
 
   try {
     localStorage.setItem(BUDGET_CURRENCY_STORAGE_KEY, currency);
@@ -1037,24 +1099,86 @@ function syncBulkBudgetCurrencyFromCampaign() {
   const bulkFx = $('bulkUsdFxRate');
   if (bulkCur && els.budgetCurrency) bulkCur.value = els.budgetCurrency.value;
   if (bulkFx && els.usdFxRate) bulkFx.value = els.usdFxRate.value;
+  applyCurrencyUi({
+    currencySelect: bulkCur,
+    budgetInput: $('bulkBudget'),
+    fxField: $('bulkFxRateField'),
+    iconEl: $('bulkBudgetInputIcon'),
+    isBulk: true
+  });
   updateBulkBudgetConvertPreview();
 }
 
 function updateBulkBudgetConvertPreview() {
+  const currencySelect = $('bulkBudgetCurrency');
+  const currency = String(currencySelect?.value || 'USD').toUpperCase();
+  if ($('bulkFxRateField')) $('bulkFxRateField').style.display = currency === 'VND' ? '' : 'none';
+  const iconEl = $('bulkBudgetInputIcon');
+  if (iconEl) iconEl.textContent = currency === 'VND' ? '₫' : '$';
+
   const preview = $('bulkBudgetConvertPreview');
-  const fxField = $('bulkFxRateField');
-  const currency = String($('bulkBudgetCurrency')?.value || 'VND').toUpperCase();
-  if (fxField) fxField.style.display = currency === 'VND' ? '' : 'none';
+  const errEl = $('bulkBudgetMinError');
   if (!preview) return;
 
   const amount = Number($('bulkBudget')?.value);
   if (!Number.isFinite(amount) || amount <= 0) {
-    preview.textContent = 'Nhập budget để xem số gửi Meta.';
+    preview.textContent = currency === 'USD' ? 'Nhập số đô (VD 1 = $1/ngày).' : 'Nhập số VND để quy đổi sang USD.';
+    preview.style.color = 'var(--primary)';
+    if (errEl) {
+      errEl.style.display = 'none';
+      errEl.textContent = '';
+    }
     return;
   }
   const fx = Number($('bulkUsdFxRate')?.value) || getUsdFxRate();
   const resolved = resolveMetaDailyBudget(amount, currency, fx);
+  const okMin = applyBudgetMinError(errEl, resolved);
+  preview.style.color = okMin ? 'var(--primary)' : '#b91c1c';
   preview.textContent = resolved.ok ? `↔ ${resolved.label}` : resolved.error;
+}
+
+async function refreshAdAccountBudgetInfo(adAccountIdRaw) {
+  const adAccountId = normalizeAdAccountIdInput(adAccountIdRaw || els.adAccountId?.value || '');
+  if (!adAccountId) return null;
+  try {
+    const data = await apiRequest(`/accounts/${encodeURIComponent(adAccountId)}`, {
+      method: 'GET',
+      retries: 1,
+      timeoutMs: 15000
+    });
+    const min = Number(data?.min_daily_budget);
+    adAccountBudgetInfo = {
+      currency: data?.currency || null,
+      minDailyBudgetCents:
+        Number.isFinite(min) && min > 0 ? min : DEFAULT_MIN_DAILY_BUDGET_CENTS,
+      loaded: true,
+      adAccountId
+    };
+    updateBudgetConvertPreview();
+    updateBulkBudgetConvertPreview();
+    return adAccountBudgetInfo;
+  } catch {
+    adAccountBudgetInfo = {
+      currency: null,
+      minDailyBudgetCents: DEFAULT_MIN_DAILY_BUDGET_CENTS,
+      loaded: false,
+      adAccountId
+    };
+    updateBudgetConvertPreview();
+    updateBulkBudgetConvertPreview();
+    return null;
+  }
+}
+
+function assertBudgetMeetsMinimum(resolved) {
+  if (!resolved?.ok) throw new Error(resolved?.error || 'Budget không hợp lệ');
+  const minCents = getEffectiveMinDailyCents();
+  if (resolved.metaBudget < minCents) {
+    const minUsd = (minCents / 100).toFixed(2);
+    throw new Error(
+      `Ngân sách không đủ: min ≈ $${minUsd}/ngày, bạn đang đặt $${resolved.usd.toFixed(2)}`
+    );
+  }
 }
 
 function getReportFilters() {
@@ -1306,6 +1430,9 @@ async function runFullFlow() {
       throw new Error(t('noValidRecord'));
     }
 
+    await refreshAdAccountBudgetInfo();
+    assertBudgetMeetsMinimum(resolvedBudget);
+
     const isLeadForm = String(els.campaignType?.value || 'messenger') === 'lead_form';
     if (isLeadForm) {
       const defaultLeadFormId = String(els.leadFormId?.value || '').trim();
@@ -1479,6 +1606,7 @@ els.langEnBtn?.addEventListener('click', () => setLanguage('en'));
 els.adAccountId?.addEventListener('blur', () => {
   const normalized = normalizeAdAccountIdInput(els.adAccountId.value);
   if (normalized) els.adAccountId.value = normalized;
+  refreshAdAccountBudgetInfo(normalized);
 });
 
 function updateCampaignTypeUI() {
@@ -1843,8 +1971,9 @@ function autoFixCampaign() {
 
   const budgetVal = Number(els.defaultBudget?.value);
   if ((!Number.isFinite(budgetVal) || budgetVal <= 0) && els.defaultBudget) {
-    els.defaultBudget.value = '100000';
-    applied.push('Budget = 100.000 (mặc định — hãy chỉnh theo tài khoản)');
+    const cur = getBudgetCurrency();
+    els.defaultBudget.value = cur === 'USD' ? '1' : '100000';
+    applied.push(cur === 'USD' ? 'Budget = $1 (mặc định)' : 'Budget = 100.000 VND (mặc định)');
   }
 
   if (isLeadForm && els.objective?.value && els.objective.value !== 'OUTCOME_LEADS') {
@@ -2433,6 +2562,15 @@ async function bulkRun() {
     return;
   }
 
+  try {
+    await refreshAdAccountBudgetInfo(cfg.adAccountId);
+    assertBudgetMeetsMinimum(cfg.budgetResolved);
+  } catch (err) {
+    setStatusHtml('');
+    appendStatus(err.message, 'error');
+    return;
+  }
+
   running = true;
   setStatusHtml('');
   try {
@@ -2581,11 +2719,26 @@ function initBulkLauncher() {
 function setupBudgetCurrencyInputs() {
   const savedCur = localStorage.getItem(BUDGET_CURRENCY_STORAGE_KEY);
   const savedFx = localStorage.getItem(USD_FX_RATE_STORAGE_KEY);
-  if (els.budgetCurrency && savedCur) els.budgetCurrency.value = savedCur;
+  if (els.budgetCurrency && savedCur && ['USD', 'VND'].includes(savedCur)) {
+    els.budgetCurrency.value = savedCur;
+  }
   if (els.usdFxRate && savedFx) els.usdFxRate.value = savedFx;
+
+  applyCurrencyUi({
+    currencySelect: els.budgetCurrency,
+    budgetInput: els.defaultBudget,
+    fxField: els.fxRateField,
+    iconEl: $('budgetInputIcon')
+  });
 
   els.defaultBudget?.addEventListener('input', updateBudgetConvertPreview);
   els.budgetCurrency?.addEventListener('change', () => {
+    applyCurrencyUi({
+      currencySelect: els.budgetCurrency,
+      budgetInput: els.defaultBudget,
+      fxField: els.fxRateField,
+      iconEl: $('budgetInputIcon')
+    });
     updateBudgetConvertPreview();
     syncBulkBudgetCurrencyFromCampaign();
   });
@@ -2595,11 +2748,21 @@ function setupBudgetCurrencyInputs() {
   });
 
   $('bulkBudget')?.addEventListener('input', updateBulkBudgetConvertPreview);
-  $('bulkBudgetCurrency')?.addEventListener('change', updateBulkBudgetConvertPreview);
+  $('bulkBudgetCurrency')?.addEventListener('change', () => {
+    applyCurrencyUi({
+      currencySelect: $('bulkBudgetCurrency'),
+      budgetInput: $('bulkBudget'),
+      fxField: $('bulkFxRateField'),
+      iconEl: $('bulkBudgetInputIcon'),
+      isBulk: true
+    });
+    updateBulkBudgetConvertPreview();
+  });
   $('bulkUsdFxRate')?.addEventListener('input', updateBulkBudgetConvertPreview);
 
-  syncBulkBudgetCurrencyFromCampaign();
   updateBudgetConvertPreview();
+  updateBulkBudgetConvertPreview();
+  refreshAdAccountBudgetInfo();
 }
 
 setupBackendUrlInput();

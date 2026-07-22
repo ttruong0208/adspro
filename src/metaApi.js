@@ -188,7 +188,7 @@ export async function scanPermissions({ adAccountId, pageIds = [] }) {
 export async function getAdAccount(adAccountId) {
   const normalized = normalizeAdAccountId(adAccountId);
   return metaFetch(
-    `/${normalized}?fields=id,name,account_id,account_status&access_token=${encodeURIComponent(getCurrentUserToken())}`
+    `/${normalized}?fields=id,name,account_id,account_status,currency,min_daily_budget,timezone_name&access_token=${encodeURIComponent(getCurrentUserToken())}`
   );
 }
 
