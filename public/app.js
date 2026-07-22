@@ -132,7 +132,7 @@ const I18N = {
     adminApiKeyLabel: 'Admin API Key (nếu bật bảo mật)',
     adminApiKeyPlaceholder: 'Để trống nếu server không bật ADMIN_API_KEY',
     batchInputLabel: 'Danh sách pageId để chạy ads',
-    batchInputHint: '1 dòng: cách nhau bằng dấu cách / phẩy. Có thể: pageId|formId.',
+    batchInputHint: '1 cột dọc: mỗi dòng 1 pageId. Dán list ngang cũng tự tách dòng. Có thể: pageId|formId.',
     runCardTitle: 'Chạy full luồng',
     runCardSubtitle: 'Chạy bằng Ad Account và danh sách pageId ở phần cấu hình phía trên.',
     runFullFlowBtn: '▶ Chạy full luồng 1-7',
@@ -259,7 +259,7 @@ const I18N = {
     adminApiKeyLabel: 'Admin API Key (if security enabled)',
     adminApiKeyPlaceholder: 'Leave empty if ADMIN_API_KEY is disabled on server',
     batchInputLabel: 'Page IDs to run ads',
-    batchInputHint: 'One line: separate by space/comma. Optional: pageId|formId.',
+    batchInputHint: 'One column: 1 pageId per line. Pasting a horizontal list auto-splits. Optional: pageId|formId.',
     runCardTitle: 'Run full flow',
     runCardSubtitle: 'Runs with the ad account and page IDs configured above.',
     runFullFlowBtn: '▶ Run full flow 1-7',
@@ -2419,14 +2419,14 @@ els.batchInput?.addEventListener('input', updatePageCount);
 els.batchInput?.addEventListener('paste', () => {
   setTimeout(() => {
     if (!els.batchInput) return;
-    els.batchInput.value = normalizeIdListToSingleLine(els.batchInput.value);
+    els.batchInput.value = normalizeIdListToSingleColumn(els.batchInput.value);
     updatePageCount();
     scheduleLiveAudit();
   }, 0);
 });
 els.batchInput?.addEventListener('blur', () => {
   if (!els.batchInput) return;
-  els.batchInput.value = normalizeIdListToSingleLine(els.batchInput.value);
+  els.batchInput.value = normalizeIdListToSingleColumn(els.batchInput.value);
   updatePageCount();
 });
 
@@ -2444,8 +2444,8 @@ importFileInput?.addEventListener('change', (e) => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    const text = String(reader.result || '').replace(/[,;\t]+/g, ' ');
-    const normalized = normalizeIdListToSingleLine(text);
+    const text = String(reader.result || '').replace(/[,;\t]+/g, '\n');
+    const normalized = normalizeIdListToSingleColumn(text);
     if (els.batchInput) {
       els.batchInput.value = normalized;
       updatePageCount();
