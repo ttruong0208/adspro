@@ -450,7 +450,8 @@
       }
 
       #batchInput {
-        min-height: 110px;
+        min-height: 0;
+        width: 100%;
       }
 
       .hint {
@@ -1582,11 +1583,9 @@
                 <label id="batchInputLabel" for="batchInput" style="margin:0;">Danh sách pageId để chạy ads</label>
                 <span id="pageCount" class="pagelist-count">0 page</span>
               </div>
-              <textarea id="batchInput" placeholder="61551441819219
-123456789012345
-987654321098765"></textarea>
+              <input id="batchInput" type="text" placeholder="61551441819219 123456789012345 987654321098765" />
               <div class="pagelist-head" style="margin-top:8px; margin-bottom:0;">
-                <div id="batchInputHint" class="hint" style="margin:0;">Mỗi dòng 1 pageId. Định dạng: ID sếp gửi | Page ID thật.</div>
+                <div id="batchInputHint" class="hint" style="margin:0;">1 dòng: cách nhau bằng dấu cách / phẩy. Có thể: pageId|formId.</div>
                 <div class="import-btns">
                   <button type="button" class="secondary" id="importTxtBtn">⤒ Import TXT</button>
                   <button type="button" class="secondary" id="importCsvBtn">⤒ Import CSV</button>

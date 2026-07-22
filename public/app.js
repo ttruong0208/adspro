@@ -132,7 +132,7 @@ const I18N = {
     adminApiKeyLabel: 'Admin API Key (nếu bật bảo mật)',
     adminApiKeyPlaceholder: 'Để trống nếu server không bật ADMIN_API_KEY',
     batchInputLabel: 'Danh sách pageId để chạy ads',
-    batchInputHint: 'Mỗi dòng 1 pageId để chạy ads. Có thể dùng format: ID sếp gửi | Page ID thật.',
+    batchInputHint: '1 dòng: cách nhau bằng dấu cách / phẩy. Có thể: pageId|formId.',
     runCardTitle: 'Chạy full luồng',
     runCardSubtitle: 'Chạy bằng Ad Account và danh sách pageId ở phần cấu hình phía trên.',
     runFullFlowBtn: '▶ Chạy full luồng 1-7',
@@ -259,7 +259,7 @@ const I18N = {
     adminApiKeyLabel: 'Admin API Key (if security enabled)',
     adminApiKeyPlaceholder: 'Leave empty if ADMIN_API_KEY is disabled on server',
     batchInputLabel: 'Page IDs to run ads',
-    batchInputHint: 'One page ID per line. You can use: manager ID | real Page ID format.',
+    batchInputHint: 'One line: separate by space/comma. Optional: pageId|formId.',
     runCardTitle: 'Run full flow',
     runCardSubtitle: 'Runs with the ad account and page IDs configured above.',
     runFullFlowBtn: '▶ Run full flow 1-7',
@@ -877,7 +877,11 @@ async function refreshReportSummary() {
 }
 
 function parseBatchInput(raw) {
-  const lines = raw.split('\n').map((s) => s.trim()).filter(Boolean);
+  const tokens = String(raw || '')
+    .replaceAll('\t', ' ')
+    .split(/[\s,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
   const items = [];
   const errors = [];
   const defaultPageName = (els.defaultPageName?.value || '').trim();
@@ -890,8 +894,8 @@ function parseBatchInput(raw) {
     return { items, errors, resolvedBudget: null };
   }
 
-  for (const [index, line] of lines.entries()) {
-    const [rawPageId, rawFormId] = line.split('|').map((x) => (x || '').trim());
+  for (const [index, token] of tokens.entries()) {
+    const [rawPageId, rawFormId] = token.split('|').map((x) => (x || '').trim());
     const pageId = rawPageId;
     const leadFormId = rawFormId || '';
 
@@ -912,7 +916,8 @@ function parsePageIdsOnly(raw) {
   return [
     ...new Set(
       String(raw || '')
-        .split(/\r?\n/)
+        .replaceAll('\t', ' ')
+        .split(/[\s,;\n\r]+/)
         .map((line) => line.trim())
         .filter(Boolean)
     )
@@ -927,6 +932,17 @@ function normalizeIdListToSingleColumn(raw) {
     .filter(Boolean);
 
   return [...new Set(values)].join('\n');
+}
+
+/** Chuẩn hóa list page thành 1 dòng (cách nhau bằng space). */
+function normalizeIdListToSingleLine(raw) {
+  const values = String(raw || '')
+    .replaceAll('\t', ' ')
+    .split(/[\s,;]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  return [...new Set(values)].join(' ');
 }
 
 function getInputPageIds() {
@@ -2320,6 +2336,19 @@ function updatePageCount() {
 }
 
 els.batchInput?.addEventListener('input', updatePageCount);
+els.batchInput?.addEventListener('paste', () => {
+  setTimeout(() => {
+    if (!els.batchInput) return;
+    els.batchInput.value = normalizeIdListToSingleLine(els.batchInput.value);
+    updatePageCount();
+    scheduleLiveAudit();
+  }, 0);
+});
+els.batchInput?.addEventListener('blur', () => {
+  if (!els.batchInput) return;
+  els.batchInput.value = normalizeIdListToSingleLine(els.batchInput.value);
+  updatePageCount();
+});
 
 // Import danh sách page từ file TXT/CSV.
 const importFileInput = document.getElementById('importFileInput');
@@ -2335,8 +2364,8 @@ importFileInput?.addEventListener('change', (e) => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    const text = String(reader.result || '').replace(/[,;\t]+/g, '\n');
-    const normalized = normalizeIdListToSingleColumn(text);
+    const text = String(reader.result || '').replace(/[,;\t]+/g, ' ');
+    const normalized = normalizeIdListToSingleLine(text);
     if (els.batchInput) {
       els.batchInput.value = normalized;
       updatePageCount();
