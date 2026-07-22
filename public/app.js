@@ -1149,10 +1149,10 @@ function applyCurrencyUi({ currencySelect, budgetInput, fxField, iconEl, isBulk 
   if (budgetInput) {
     if (currency === 'USD') {
       budgetInput.step = '0.01';
-      budgetInput.placeholder = '1';
-      // Đổi từ VND sang USD: nếu số đang lớn kiểu VND thì reset về 1
+      budgetInput.placeholder = '1.06';
+      // Đổi từ VND sang USD: nếu số đang lớn kiểu VND thì reset về 1.06
       const n = Number(budgetInput.value);
-      if (Number.isFinite(n) && n >= 100) budgetInput.value = '1';
+      if (Number.isFinite(n) && n >= 100) budgetInput.value = '1.06';
     } else {
       budgetInput.step = '1000';
       budgetInput.placeholder = '100000';
@@ -2078,8 +2078,8 @@ function autoFixCampaign() {
   const budgetVal = Number(els.defaultBudget?.value);
   if ((!Number.isFinite(budgetVal) || budgetVal <= 0) && els.defaultBudget) {
     const cur = getBudgetCurrency();
-    els.defaultBudget.value = cur === 'USD' ? '1' : '100000';
-    applied.push(cur === 'USD' ? 'Budget = $1 (mặc định)' : 'Budget = 100.000 VND (mặc định)');
+    els.defaultBudget.value = cur === 'USD' ? '1.06' : '100000';
+    applied.push(cur === 'USD' ? 'Budget = $1.06 (mặc định)' : 'Budget = 100.000 VND (mặc định)');
   }
 
   if (isLeadForm && els.objective?.value && els.objective.value !== 'OUTCOME_LEADS') {
