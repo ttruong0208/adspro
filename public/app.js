@@ -961,12 +961,66 @@ const DEFAULT_MIN_DAILY_BUDGET_CENTS = 100;
 
 let adAccountBudgetInfo = {
   currency: null,
-  minDailyBudgetCents: DEFAULT_MIN_DAILY_BUDGET_CENTS,
+  minDailyBudgetRaw: DEFAULT_MIN_DAILY_BUDGET_CENTS,
   loaded: false,
   adAccountId: ''
 };
 
-/** Đổi budget người dùng nhập → số gửi Meta (USD account = cent). */
+/** Meta: USD/offset 100 = cent; VND/JPY... offset 1 = đơn vị nguyên. */
+function getCurrencyOffset(currency) {
+  const c = String(currency || '').toUpperCase();
+  if (['VND', 'JPY', 'KRW', 'CLP', 'ISK', 'UGX', 'VUV', 'XAF', 'XOF', 'XPF'].includes(c)) {
+    return 1;
+  }
+  return 100;
+}
+
+function interpretAdAccountMin(minRaw, currency) {
+  const raw = Number(minRaw);
+  const cur = String(currency || '').toUpperCase();
+  const rate = getUsdFxRate();
+
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return {
+      minRaw: DEFAULT_MIN_DAILY_BUDGET_CENTS,
+      minUsd: 1,
+      label: '$1.00 (mặc định)'
+    };
+  }
+
+  // TK VND: min_daily_budget là số VND (VD 26411), KHÔNG phải cent USD.
+  if (cur === 'VND' || (!cur && raw >= 1000)) {
+    const minUsd = raw / rate;
+    return {
+      minRaw: raw,
+      minUsd,
+      accountCurrency: cur || 'VND',
+      label: `${formatCurrency(raw)} VND ≈ $${formatUsd(minUsd)}`
+    };
+  }
+
+  // USD và tiền có cent: raw là cent
+  const minUsd = raw / 100;
+  // Min USD thực tế hiếm khi > $50/ngày — nếu lớn bất thường, có thể API trả VND.
+  if (cur === 'USD' && raw > 5000) {
+    const asVndUsd = raw / rate;
+    return {
+      minRaw: raw,
+      minUsd: asVndUsd,
+      accountCurrency: 'VND?',
+      label: `${formatCurrency(raw)} (có vẻ VND) ≈ $${formatUsd(asVndUsd)}`
+    };
+  }
+
+  return {
+    minRaw: raw,
+    minUsd,
+    accountCurrency: cur || 'USD',
+    label: `$${formatUsd(minUsd)}`
+  };
+}
+
+/** Đổi budget người dùng nhập → số gửi Meta (đúng đơn vị tiền TKQC). */
 function resolveMetaDailyBudget(rawAmount, currency, fxRate) {
   const amount = Number(rawAmount);
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -975,10 +1029,40 @@ function resolveMetaDailyBudget(rawAmount, currency, fxRate) {
 
   const mode = String(currency || 'USD').toUpperCase();
   const rate = Number(fxRate);
-  // Tỷ giá VND/USD tối thiểu hợp lý; nếu sai thì dùng mặc định 25000.
-  const safeRate =
-    Number.isFinite(rate) && rate >= 1000 ? rate : DEFAULT_USD_FX_RATE;
+  const safeRate = Number.isFinite(rate) && rate >= 1000 ? rate : DEFAULT_USD_FX_RATE;
+  const acctCur = String(adAccountBudgetInfo.currency || '').toUpperCase();
+  const acctIsVnd = acctCur === 'VND' || (!acctCur && Number(adAccountBudgetInfo.minDailyBudgetRaw) >= 1000);
 
+  // TK VND: Meta nhận số VND nguyên (không nhân 100).
+  if (acctIsVnd) {
+    if (mode === 'USD') {
+      const vnd = Math.round(amount * safeRate);
+      return {
+        ok: vnd > 0,
+        metaBudget: vnd,
+        usd: amount,
+        input: amount,
+        currency: 'USD',
+        fxRate: safeRate,
+        label: `$${formatUsd(amount)} ≈ ${formatCurrency(vnd)} VND • gửi Meta ${formatCurrency(vnd)} (TK VND)`,
+        error: vnd > 0 ? null : 'Budget không hợp lệ'
+      };
+    }
+    const vnd = Math.round(amount);
+    const usd = vnd / safeRate;
+    return {
+      ok: vnd > 0,
+      metaBudget: vnd,
+      usd,
+      input: amount,
+      currency: 'VND',
+      fxRate: safeRate,
+      label: `${formatCurrency(vnd)} VND ≈ $${formatUsd(usd)} • gửi Meta ${formatCurrency(vnd)} (TK VND)`,
+      error: vnd > 0 ? null : 'Budget không hợp lệ'
+    };
+  }
+
+  // TK USD: Meta nhận cent.
   if (mode === 'VND') {
     const usd = amount / safeRate;
     const cents = Math.round(usd * 100);
@@ -994,7 +1078,6 @@ function resolveMetaDailyBudget(rawAmount, currency, fxRate) {
     };
   }
 
-  // USD: nhập đô (1 = $1, 0.5 = $0.50) → cent
   const cents = Math.round(amount * 100);
   const vndEq = Math.round(amount * safeRate);
   return {
@@ -1032,9 +1115,11 @@ function resolveCampaignMetaBudget(rawAmount) {
   return resolveMetaDailyBudget(rawAmount, getBudgetCurrency(), getUsdFxRate());
 }
 
-function getEffectiveMinDailyCents() {
-  const min = Number(adAccountBudgetInfo.minDailyBudgetCents);
-  return Number.isFinite(min) && min > 0 ? min : DEFAULT_MIN_DAILY_BUDGET_CENTS;
+function getEffectiveMinInfo() {
+  return interpretAdAccountMin(
+    adAccountBudgetInfo.minDailyBudgetRaw,
+    adAccountBudgetInfo.currency
+  );
 }
 
 function applyBudgetMinError(el, resolved) {
@@ -1044,15 +1129,12 @@ function applyBudgetMinError(el, resolved) {
     el.textContent = `❌ ${resolved?.error || 'Budget không hợp lệ'}`;
     return false;
   }
-  const minCents = getEffectiveMinDailyCents();
-  if (resolved.metaBudget < minCents) {
-    const minUsd = minCents / 100;
-    const rate = resolved.fxRate >= 1000 ? resolved.fxRate : getUsdFxRate();
-    const needVnd = Math.ceil(minUsd * rate);
+  const minInfo = getEffectiveMinInfo();
+  // Chỉ so theo USD để tránh lệch đơn vị (cent USD vs VND).
+  if (resolved.usd + 1e-9 < minInfo.minUsd) {
     el.style.display = 'block';
     el.textContent =
-      `❌ Ngân sách không đủ — min quảng cáo ≈ $${formatUsd(minUsd)}` +
-      ` (≈ ${formatCurrency(needVnd)} VND). Bạn đang đặt $${formatUsd(resolved.usd)}.`;
+      `❌ Ngân sách không đủ — min TK ≈ ${minInfo.label}. Bạn đang đặt $${formatUsd(resolved.usd)}.`;
     return false;
   }
   el.style.display = 'none';
@@ -1109,7 +1191,7 @@ function updateBudgetConvertPreview() {
   const okMin = applyBudgetMinError(errEl, resolved);
   preview.style.color = okMin ? 'var(--primary)' : '#b91c1c';
   preview.textContent = resolved.ok
-    ? `↔ ${resolved.label}${adAccountBudgetInfo.loaded ? ` • Min TK: $${(getEffectiveMinDailyCents() / 100).toFixed(2)}` : ''}`
+    ? `↔ ${resolved.label}${adAccountBudgetInfo.loaded ? ` • Min TK: ${getEffectiveMinInfo().label}` : ''}`
     : resolved.error;
 
   try {
@@ -1175,8 +1257,7 @@ async function refreshAdAccountBudgetInfo(adAccountIdRaw) {
     const min = Number(data?.min_daily_budget);
     adAccountBudgetInfo = {
       currency: data?.currency || null,
-      minDailyBudgetCents:
-        Number.isFinite(min) && min > 0 ? min : DEFAULT_MIN_DAILY_BUDGET_CENTS,
+      minDailyBudgetRaw: Number.isFinite(min) && min > 0 ? min : DEFAULT_MIN_DAILY_BUDGET_CENTS,
       loaded: true,
       adAccountId
     };
@@ -1186,7 +1267,7 @@ async function refreshAdAccountBudgetInfo(adAccountIdRaw) {
   } catch {
     adAccountBudgetInfo = {
       currency: null,
-      minDailyBudgetCents: DEFAULT_MIN_DAILY_BUDGET_CENTS,
+      minDailyBudgetRaw: DEFAULT_MIN_DAILY_BUDGET_CENTS,
       loaded: false,
       adAccountId
     };
@@ -1198,11 +1279,10 @@ async function refreshAdAccountBudgetInfo(adAccountIdRaw) {
 
 function assertBudgetMeetsMinimum(resolved) {
   if (!resolved?.ok) throw new Error(resolved?.error || 'Budget không hợp lệ');
-  const minCents = getEffectiveMinDailyCents();
-  if (resolved.metaBudget < minCents) {
-    const minUsd = (minCents / 100).toFixed(2);
+  const minInfo = getEffectiveMinInfo();
+  if (resolved.usd + 1e-9 < minInfo.minUsd) {
     throw new Error(
-      `Ngân sách không đủ: min ≈ $${minUsd}/ngày, bạn đang đặt $${resolved.usd.toFixed(2)}`
+      `Ngân sách không đủ: min TK ≈ ${minInfo.label}, bạn đang đặt $${formatUsd(resolved.usd)}`
     );
   }
 }
