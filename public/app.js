@@ -611,9 +611,28 @@ function buildApiHeaders(extra = {}) {
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const timer = setTimeout(() => {
+    try {
+      ctrl.abort(new Error(`Timeout ${timeoutMs}ms`));
+    } catch {
+      ctrl.abort();
+    }
+  }, timeoutMs);
   try {
     return await fetch(url, { ...options, signal: ctrl.signal });
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    const name = String(err?.name || '');
+    if (
+      name === 'AbortError' ||
+      msg.toLowerCase().includes('aborted') ||
+      msg.toLowerCase().includes('timeout')
+    ) {
+      throw new Error(
+        `Hết thời gian chờ (${Math.round(timeoutMs / 1000)}s). Backend chậm hoặc mất mạng — thử lại.`
+      );
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -705,6 +724,53 @@ function isPermissionDeniedError(err) {
     (message.includes('không có quyền ghi') || message.includes('khong co quyen ghi')) &&
       looksLikeAdAccountPermission
   );
+}
+
+function isRateLimitError(err) {
+  const errorType = String(err?.errorType || '').toUpperCase();
+  const message = String(err?.message || '').toLowerCase();
+  return (
+    errorType === 'RATE_LIMIT' ||
+    message.includes('application request limit') ||
+    message.includes('request limit reached') ||
+    message.includes('rate limit') ||
+    message.includes('too many calls') ||
+    message.includes('(#4)')
+  );
+}
+
+const RATE_LIMIT_WAIT_MS = 15 * 60 * 1000;
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Chờ rate limit Meta: mặc định 15 phút, log từng phút. */
+async function waitForMetaRateLimit(reason = '') {
+  const totalMin = Math.round(RATE_LIMIT_WAIT_MS / 60000);
+  appendStatus(
+    `Meta rate limit${reason ? `: ${reason}` : ''}. Tự chờ ${totalMin} phút rồi chạy tiếp (giữ tab mở)...`,
+    'section'
+  );
+  const step = 60 * 1000;
+  for (let left = totalMin; left > 0; left--) {
+    appendStatus(`⏳ Còn ~${left} phút...`, 'running');
+    await sleepMs(step);
+  }
+  appendStatus('Hết thời gian chờ rate limit — tiếp tục chạy.', 'success');
+}
+
+async function apiRequestWithRateLimitRetry(path, options = {}, maxWaits = 2) {
+  let waits = 0;
+  while (true) {
+    try {
+      return await apiRequest(path, options);
+    } catch (err) {
+      if (!isRateLimitError(err) || waits >= maxWaits) throw err;
+      waits += 1;
+      await waitForMetaRateLimit(err.message || '');
+    }
+  }
 }
 
 function setLoginButtonState({ disabled = false, text = null, reason = '' } = {}) {
@@ -1593,7 +1659,7 @@ async function runFullFlow() {
       }
 
       try {
-        const data = await apiRequest('/flow/run-full-draft', {
+        const data = await apiRequestWithRateLimitRetry('/flow/run-full-draft', {
           method: 'POST',
           body: {
             ...payload,
@@ -1601,7 +1667,7 @@ async function runFullFlow() {
             businessId: els.businessId?.value?.trim() || ''
           },
           retries: 2,
-          timeoutMs: 30000
+          timeoutMs: 60000
         });
 
         summary.success += 1;
@@ -1621,6 +1687,9 @@ async function runFullFlow() {
           break;
         }
       }
+
+      // Nghỉ nhẹ giữa các page để giảm rate limit Meta.
+      if (i < items.length - 1) await sleepMs(800);
     }
 
     appendDivider();
@@ -2726,25 +2795,29 @@ async function bulkRun() {
       }
 
       try {
-        const data = await apiRequest('/flow/run-matrix-page', {
-          method: 'POST',
-          body: {
-            adAccountId: cfg.adAccountId,
-            campaignType: cfg.campaignType,
-            objective: cfg.objective,
-            dailyBudget: cfg.dailyBudget,
-            namePrefix: cfg.namePrefix,
-            publish: cfg.publish,
-            audiences: cfg.audiences,
-            creatives: cfg.creatives,
-            pageId: page.pageId,
-            pageName: page.pageName,
-            operatorName: getOperatorName(),
-            businessId: els.businessId?.value?.trim() || ''
+        const data = await apiRequestWithRateLimitRetry(
+          '/flow/run-matrix-page',
+          {
+            method: 'POST',
+            body: {
+              adAccountId: cfg.adAccountId,
+              campaignType: cfg.campaignType,
+              objective: cfg.objective,
+              dailyBudget: cfg.dailyBudget,
+              namePrefix: cfg.namePrefix,
+              publish: cfg.publish,
+              audiences: cfg.audiences,
+              creatives: cfg.creatives,
+              pageId: page.pageId,
+              pageName: page.pageName,
+              operatorName: getOperatorName(),
+              businessId: els.businessId?.value?.trim() || ''
+            },
+            retries: 0,
+            timeoutMs: 180000
           },
-          retries: 0,
-          timeoutMs: 180000
-        });
+          2
+        );
 
         summary.success += 1;
         summary.ads += data.counts?.ads || 0;
@@ -2766,6 +2839,8 @@ async function bulkRun() {
           break;
         }
       }
+
+      if (i < cfg.pages.length - 1) await sleepMs(800);
     }
 
     appendDivider();

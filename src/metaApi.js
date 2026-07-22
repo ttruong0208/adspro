@@ -25,6 +25,19 @@ export function normalizeNumericId(id) {
 
 export function classifyMetaError(message = '') {
   const lower = String(message || '').toLowerCase();
+  const raw = String(message || '');
+
+  if (
+    lower.includes('application request limit') ||
+    lower.includes('request limit reached') ||
+    lower.includes('rate limit') ||
+    lower.includes('too many calls') ||
+    lower.includes('(#4)') ||
+    /\(#4\)/.test(raw) ||
+    lower.includes('code 4')
+  ) {
+    return 'RATE_LIMIT';
+  }
 
   if (
     lower.includes('not allowed for this call') ||
@@ -39,9 +52,22 @@ export function classifyMetaError(message = '') {
   if (lower.includes('invalid') && lower.includes('page')) return 'INVALID_PAGE_ID';
   if (lower.includes('invalid') && lower.includes('account')) return 'INVALID_AD_ACCOUNT_ID';
   if (lower.includes('disabled') || lower.includes('account_status')) return 'AD_ACCOUNT_DISABLED';
-  if (lower.includes('rate limit') || lower.includes('too many calls')) return 'RATE_LIMIT';
 
   return 'UNKNOWN';
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const RATE_LIMIT_MAX_RETRIES = Number(process.env.META_RATE_LIMIT_RETRIES || 2);
+
+function isRateLimitError(err) {
+  if (!err) return false;
+  if (String(err.errorType || '').toUpperCase() === 'RATE_LIMIT') return true;
+  const code = err?.meta?.code ?? err?.meta?.error_subcode;
+  if (Number(code) === 4) return true;
+  return classifyMetaError(err.message) === 'RATE_LIMIT';
 }
 
 async function metaFetch(path, options = {}) {
@@ -57,27 +83,40 @@ async function metaFetch(path, options = {}) {
     ...(options.headers || {})
   };
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method: options.method || 'GET',
-    headers,
-    body: options.body
-  });
+  let lastErr = null;
+  for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
+    const response = await fetch(`${BASE_URL}${path}`, {
+      method: options.method || 'GET',
+      headers,
+      body: options.body
+    });
 
-  const data = await response.json();
+    const data = await response.json();
 
-  if (!response.ok || data.error) {
-    const err = new Error(
-      data?.error?.error_user_title ||
-      data?.error?.error_user_msg ||
-      data?.error?.message ||
-      'Meta API request failed'
-    );
-    err.meta = data?.error || null;
-    err.errorType = classifyMetaError(err.message);
-    throw err;
+    if (!response.ok || data.error) {
+      const err = new Error(
+        data?.error?.error_user_title ||
+        data?.error?.error_user_msg ||
+        data?.error?.message ||
+        'Meta API request failed'
+      );
+      err.meta = data?.error || null;
+      err.errorType = classifyMetaError(err.message);
+      if (Number(data?.error?.code) === 4) err.errorType = 'RATE_LIMIT';
+      lastErr = err;
+
+      // Serverless (Vercel) không sleep 15 phút được — chỉ retry ngắn; chờ dài để frontend lo.
+      if (isRateLimitError(err) && attempt < RATE_LIMIT_MAX_RETRIES) {
+        await sleep(Math.min(20000, 3000 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+
+    return data;
   }
 
-  return data;
+  throw lastErr || new Error('Meta API request failed');
 }
 
 async function fetchAllPages(firstPath) {

@@ -1252,6 +1252,21 @@ app.get('/auth/facebook/callback', async (req, res) => {
     const errorCode = String(req.query.error_code || '');
 
     if (errorMessage) {
+      const isRateLimit =
+        /request limit|rate limit|#4|code.?4/i.test(errorMessage) ||
+        String(errorCode) === '4';
+      if (isRateLimit) {
+        return res.status(429).send(`
+          <!doctype html>
+          <html lang="vi"><head><meta charset="utf-8" /><title>Meta rate limit</title></head>
+          <body style="font-family:Arial,sans-serif;padding:40px;max-width:560px;margin:0 auto;">
+            <h1>Meta đang giới hạn tốc độ (rate limit)</h1>
+            <p>App bị <b>Application request limit reached</b>. Đây không phải lỗi quyền.</p>
+            <p>Hãy <b>đợi khoảng 15 phút</b>, rồi quay lại tool bấm <b>Kết nối lại Facebook</b>.</p>
+            <p style="color:#64748b;font-size:13px;">Chi tiết: ${errorMessage}</p>
+          </body></html>
+        `);
+      }
       return res.status(400).send(
         `Facebook login error${errorCode ? ` (${errorCode})` : ''}: ${errorMessage}`
       );
