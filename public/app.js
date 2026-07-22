@@ -2,6 +2,9 @@ const $ = (id) => document.getElementById(id);
 const ADMIN_API_KEY_STORAGE_KEY = 'adsmanager_admin_api_key';
 const OPERATOR_NAME_STORAGE_KEY = 'adsmanager_operator_name';
 const LANGUAGE_STORAGE_KEY = 'adsmanager_language';
+const BUDGET_CURRENCY_STORAGE_KEY = 'adsmanager_budget_currency';
+const USD_FX_RATE_STORAGE_KEY = 'adsmanager_usd_fx_rate';
+const DEFAULT_USD_FX_RATE = 25000;
 
 const els = {
   mainTitle: $('mainTitle'),
@@ -57,6 +60,10 @@ const els = {
   postId: $('postId'),
   defaultPageName: $('defaultPageName'),
   defaultBudget: $('defaultBudget'),
+  budgetCurrency: $('budgetCurrency'),
+  usdFxRate: $('usdFxRate'),
+  fxRateField: $('fxRateField'),
+  budgetConvertPreview: $('budgetConvertPreview'),
   operatorName: $('operatorName'),
   adminApiKey: $('adminApiKey'),
   batchInput: $('batchInput'),
@@ -119,7 +126,7 @@ const I18N = {
     defaultPageNameHint: 'Nếu để trống, mỗi page sẽ tự dùng pageId làm pageName.',
     defaultPageNamePlaceholder: 'Để trống để lấy pageName = pageId',
     defaultBudgetLabel: 'Budget áp dụng cho tất cả pageId',
-    defaultBudgetHint: 'Nếu tài khoản chạy VND thì nhập ngân sách theo VND (ví dụ `100000`).',
+    defaultBudgetHint: 'TKQC USD: chọn VND → đổi sang USD. VD nhập 100000, tỷ giá 25000 → ≈ $4 → Meta nhận 400 cent.',
     operatorNameLabel: 'Operator (người chạy)',
     operatorNamePlaceholder: 'VD: Truong Nguyen',
     adminApiKeyLabel: 'Admin API Key (nếu bật bảo mật)',
@@ -246,7 +253,7 @@ const I18N = {
     defaultPageNameHint: 'If empty, each page uses its own pageId as name.',
     defaultPageNamePlaceholder: 'Leave empty to use pageName = pageId',
     defaultBudgetLabel: 'Default budget for all page IDs',
-    defaultBudgetHint: 'For VND accounts, enter VND budget (e.g. `100000`).',
+    defaultBudgetHint: 'USD ad account: pick VND→USD. E.g. 100000 VND at rate 25000 ≈ $4 → Meta gets 400 cents.',
     operatorNameLabel: 'Operator',
     operatorNamePlaceholder: 'E.g. Truong Nguyen',
     adminApiKeyLabel: 'Admin API Key (if security enabled)',
@@ -875,11 +882,12 @@ function parseBatchInput(raw) {
   const errors = [];
   const defaultPageName = (els.defaultPageName?.value || '').trim();
   const budgetRaw = (els.defaultBudget?.value || '').trim();
-  const budget = Number(budgetRaw);
+  const budgetInput = Number(budgetRaw);
+  const resolved = resolveCampaignMetaBudget(budgetInput);
 
-  if (!Number.isFinite(budget) || budget <= 0) {
-    errors.push(t('invalidBudget', { value: budgetRaw || '(empty)' }));
-    return { items, errors };
+  if (!resolved.ok) {
+    errors.push(resolved.error || t('invalidBudget', { value: budgetRaw || '(empty)' }));
+    return { items, errors, resolvedBudget: null };
   }
 
   for (const [index, line] of lines.entries()) {
@@ -894,10 +902,10 @@ function parseBatchInput(raw) {
 
     const pageName = defaultPageName || pageId;
 
-    items.push({ pageId, pageName, budget, leadFormId });
+    items.push({ pageId, pageName, budget: resolved.metaBudget, leadFormId });
   }
 
-  return { items, errors };
+  return { items, errors, resolvedBudget: resolved };
 }
 
 function parsePageIdsOnly(raw) {
@@ -930,6 +938,123 @@ function formatCurrency(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '0';
   return n.toLocaleString('vi-VN');
+}
+
+/** Đổi budget người dùng nhập → số gửi Meta (USD account = cent). */
+function resolveMetaDailyBudget(rawAmount, currency, fxRate) {
+  const amount = Number(rawAmount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, metaBudget: 0, usd: 0, error: 'Budget không hợp lệ' };
+  }
+
+  const mode = String(currency || 'VND').toUpperCase();
+  const rate = Number(fxRate);
+  const safeRate = Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_USD_FX_RATE;
+
+  if (mode === 'RAW') {
+    return {
+      ok: true,
+      metaBudget: Math.round(amount),
+      usd: amount / 100,
+      input: amount,
+      currency: 'RAW',
+      fxRate: safeRate,
+      label: `Gửi nguyên ${formatCurrency(Math.round(amount))} (Meta)`
+    };
+  }
+
+  if (mode === 'USD') {
+    // Người dùng nhập số đô (VD 5 = $5) → Meta cần cent.
+    const cents = Math.round(amount * 100);
+    return {
+      ok: true,
+      metaBudget: cents,
+      usd: amount,
+      input: amount,
+      currency: 'USD',
+      fxRate: safeRate,
+      label: `$${amount} → gửi Meta ${cents} cent`
+    };
+  }
+
+  // VND → USD cent
+  const usd = amount / safeRate;
+  const cents = Math.max(1, Math.round(usd * 100));
+  return {
+    ok: true,
+    metaBudget: cents,
+    usd,
+    input: amount,
+    currency: 'VND',
+    fxRate: safeRate,
+    label: `${formatCurrency(amount)} VND ≈ $${usd.toFixed(2)} → gửi Meta ${cents} cent`
+  };
+}
+
+function getBudgetCurrency() {
+  return String(els.budgetCurrency?.value || localStorage.getItem(BUDGET_CURRENCY_STORAGE_KEY) || 'VND').toUpperCase();
+}
+
+function getUsdFxRate() {
+  const fromInput = Number(els.usdFxRate?.value);
+  if (Number.isFinite(fromInput) && fromInput > 0) return fromInput;
+  const saved = Number(localStorage.getItem(USD_FX_RATE_STORAGE_KEY));
+  if (Number.isFinite(saved) && saved > 0) return saved;
+  return DEFAULT_USD_FX_RATE;
+}
+
+function resolveCampaignMetaBudget(rawAmount) {
+  return resolveMetaDailyBudget(rawAmount, getBudgetCurrency(), getUsdFxRate());
+}
+
+function updateBudgetConvertPreview() {
+  const raw = els.defaultBudget?.value;
+  const preview = els.budgetConvertPreview;
+  const fxField = els.fxRateField;
+  const currency = getBudgetCurrency();
+
+  if (fxField) fxField.style.display = currency === 'VND' ? '' : 'none';
+
+  if (!preview) return;
+  const amount = Number(raw);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    preview.textContent = 'Nhập budget để xem số gửi Meta.';
+    return;
+  }
+  const resolved = resolveCampaignMetaBudget(amount);
+  preview.textContent = resolved.ok ? `↔ ${resolved.label}` : resolved.error;
+
+  try {
+    localStorage.setItem(BUDGET_CURRENCY_STORAGE_KEY, currency);
+    localStorage.setItem(USD_FX_RATE_STORAGE_KEY, String(getUsdFxRate()));
+  } catch {
+    // ignore
+  }
+}
+
+function syncBulkBudgetCurrencyFromCampaign() {
+  const bulkCur = $('bulkBudgetCurrency');
+  const bulkFx = $('bulkUsdFxRate');
+  if (bulkCur && els.budgetCurrency) bulkCur.value = els.budgetCurrency.value;
+  if (bulkFx && els.usdFxRate) bulkFx.value = els.usdFxRate.value;
+  updateBulkBudgetConvertPreview();
+}
+
+function updateBulkBudgetConvertPreview() {
+  const preview = $('bulkBudgetConvertPreview');
+  const fxField = $('bulkFxRateField');
+  const currency = String($('bulkBudgetCurrency')?.value || 'VND').toUpperCase();
+  if (fxField) fxField.style.display = currency === 'VND' ? '' : 'none';
+  if (!preview) return;
+
+  const amount = Number($('bulkBudget')?.value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    preview.textContent = 'Nhập budget để xem số gửi Meta.';
+    return;
+  }
+  const fx = Number($('bulkUsdFxRate')?.value) || getUsdFxRate();
+  const resolved = resolveMetaDailyBudget(amount, currency, fx);
+  preview.textContent = resolved.ok ? `↔ ${resolved.label}` : resolved.error;
 }
 
 function getReportFilters() {
@@ -1171,7 +1296,7 @@ async function runFullFlow() {
   setStatusHtml('');
 
   try {
-    const { items, errors } = parseBatchInput(els.batchInput.value || '');
+    const { items, errors, resolvedBudget } = parseBatchInput(els.batchInput.value || '');
 
     if (errors.length) {
       throw new Error(t('inputError', { details: errors.join('\n') }));
@@ -1195,6 +1320,9 @@ async function runFullFlow() {
     }
 
     appendStatus(t('startRunRows', { count: items.length }), 'section');
+    if (resolvedBudget?.label) {
+      appendStatus(`Budget: ${resolvedBudget.label}`, 'section');
+    }
 
     const permissionScan = await scanPermissionsForItems(items, { render: true });
     if (!permissionScan.adAccount?.ok) {
@@ -2099,12 +2227,389 @@ importFileInput?.addEventListener('change', (e) => {
   el.addEventListener('change', scheduleLiveAudit);
 });
 
+// ---------------------------------------------------------------------------
+// Bulk Launcher: ma trận Page × Audience × Creative (giống bulk launcher chuyên nghiệp)
+// ---------------------------------------------------------------------------
+function elFromHtml(html) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = String(html || '').trim();
+  return tpl.content.firstElementChild;
+}
+
+let bulkAudSeq = 0;
+let bulkCrSeq = 0;
+
+function addAudienceRow(data = {}) {
+  const list = $('audienceList');
+  if (!list) return;
+  bulkAudSeq += 1;
+  const label = data.label || `Audience ${bulkAudSeq}`;
+  const row = elFromHtml(`
+    <div class="matrix-row">
+      <div class="matrix-row-top">
+        <input class="matrix-label-input aud-label" value="${escapeHtml(label)}" placeholder="Tên audience" />
+        <button type="button" class="matrix-row-remove" title="Xóa audience">✕</button>
+      </div>
+      <div class="matrix-row-fields">
+        <input class="aud-lat" value="${escapeHtml(data.latitude || '')}" placeholder="Latitude (VD 16.05)" />
+        <input class="aud-long" value="${escapeHtml(data.longitude || '')}" placeholder="Longitude (VD 108.2)" />
+        <input class="aud-radius" type="number" min="1" value="${escapeHtml(data.radiusKm || '')}" placeholder="Bán kính km" />
+      </div>
+    </div>`);
+  list.appendChild(row);
+  updateBulkMatrix();
+}
+
+function addCreativeRow(data = {}) {
+  const list = $('creativeList');
+  if (!list) return;
+  bulkCrSeq += 1;
+  const label = data.label || `Creative ${bulkCrSeq}`;
+  const row = elFromHtml(`
+    <div class="matrix-row">
+      <div class="matrix-row-top">
+        <input class="matrix-label-input cr-label" value="${escapeHtml(label)}" placeholder="Tên creative" />
+        <button type="button" class="matrix-row-remove" title="Xóa creative">✕</button>
+      </div>
+      <div class="matrix-row-fields creative">
+        <input class="cr-post" value="${escapeHtml(data.postId || '')}" placeholder="Post ID (Messenger) — trống = tự lấy bài" />
+        <input class="cr-form" value="${escapeHtml(data.leadFormId || '')}" placeholder="Lead Form ID (thu lead)" />
+        <input class="cr-msg full" value="${escapeHtml(data.message || '')}" placeholder="Tin nhắn/nội dung (tuỳ chọn)" />
+      </div>
+    </div>`);
+  list.appendChild(row);
+  updateBulkMatrix();
+}
+
+function collectBulkAudiences() {
+  return [...document.querySelectorAll('#audienceList .matrix-row')].map((row, i) => ({
+    label: row.querySelector('.aud-label')?.value?.trim() || `Audience ${i + 1}`,
+    latitude: row.querySelector('.aud-lat')?.value?.trim() || '',
+    longitude: row.querySelector('.aud-long')?.value?.trim() || '',
+    radiusKm: row.querySelector('.aud-radius')?.value?.trim() || ''
+  }));
+}
+
+function collectBulkCreatives() {
+  return [...document.querySelectorAll('#creativeList .matrix-row')].map((row, i) => ({
+    label: row.querySelector('.cr-label')?.value?.trim() || `Creative ${i + 1}`,
+    postId: row.querySelector('.cr-post')?.value?.trim() || '',
+    leadFormId: row.querySelector('.cr-form')?.value?.trim() || '',
+    message: row.querySelector('.cr-msg')?.value?.trim() || ''
+  }));
+}
+
+function parseBulkPages() {
+  return String($('bulkPages')?.value || '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [id, name] = line.split('|').map((x) => (x || '').trim());
+      return { pageId: id, pageName: name || id };
+    })
+    .filter((p) => p.pageId);
+}
+
+function collectBulkConfig() {
+  const acctEl = $('bulkAdAccountId');
+  const adAccountId = normalizeAdAccountIdInput(acctEl?.value || '');
+  if (acctEl && adAccountId && acctEl.value !== adAccountId) acctEl.value = adAccountId;
+
+  const currency = String($('bulkBudgetCurrency')?.value || 'VND').toUpperCase();
+  const fx = Number($('bulkUsdFxRate')?.value) || getUsdFxRate();
+  const budgetResolved = resolveMetaDailyBudget($('bulkBudget')?.value, currency, fx);
+
+  return {
+    adAccountId,
+    campaignType: String($('bulkCampaignType')?.value || 'messenger'),
+    objective: $('bulkObjective')?.value || '',
+    dailyBudget: budgetResolved.ok ? budgetResolved.metaBudget : 0,
+    budgetResolved,
+    namePrefix: String($('bulkNamePrefix')?.value || 'AUTO').trim() || 'AUTO',
+    publish: Boolean($('bulkPublish')?.checked),
+    audiences: collectBulkAudiences(),
+    creatives: collectBulkCreatives(),
+    pages: parseBulkPages()
+  };
+}
+
+function validateBulk(cfg) {
+  const errs = [];
+  if (!cfg.adAccountId) errs.push('Thiếu Ad Account ID');
+  if (!cfg.budgetResolved?.ok || !Number.isFinite(cfg.dailyBudget) || cfg.dailyBudget <= 0) {
+    errs.push(cfg.budgetResolved?.error || 'Budget không hợp lệ');
+  }
+  if (!cfg.pages.length) errs.push('Chưa có Page nào');
+  if (!cfg.audiences.length) errs.push('Cần ít nhất 1 Audience');
+  if (!cfg.creatives.length) errs.push('Cần ít nhất 1 Creative');
+  if (cfg.campaignType === 'lead_form') {
+    const missing = cfg.creatives.filter((c) => !c.leadFormId).length;
+    if (missing) errs.push(`Thu lead: ${missing} creative thiếu Lead Form ID`);
+  }
+  return errs;
+}
+
+function updateBulkMatrix() {
+  const pages = parseBulkPages().length;
+  const auds = document.querySelectorAll('#audienceList .matrix-row').length;
+  const crs = document.querySelectorAll('#creativeList .matrix-row').length;
+  const adsets = pages * auds;
+  const ads = pages * auds * crs;
+
+  const pc = $('bulkPageCount');
+  if (pc) pc.textContent = `${pages} page`;
+  const badge = $('navBadgeBulk');
+  if (badge) {
+    badge.style.display = pages > 0 ? '' : 'none';
+    badge.textContent = pages > 999 ? '999+' : String(pages);
+  }
+
+  const el = $('bulkMatrixSummary');
+  if (!el) return;
+  const warnHtml =
+    ads > 250
+      ? `<div class="matrix-warn">⚠ ${ads} ad là rất nhiều — nên test một phần trước. Meta có thể giới hạn tốc độ tạo (rate limit).</div>`
+      : '';
+  el.innerHTML = `
+    <div class="matrix-stat"><span>📢 Campaigns</span><b>${pages}</b></div>
+    <div class="matrix-stat"><span>🎯 Ad Sets</span><b>${adsets}</b></div>
+    <div class="matrix-stat total"><span>🖼 Ads (tổng)</span><b>${ads}</b></div>
+    <div class="hint">= ${pages} page × ${auds} audience × ${crs} creative</div>
+    ${warnHtml}
+  `;
+}
+
+async function bulkPreview() {
+  const el = $('bulkPreview');
+  const cfg = collectBulkConfig();
+  const errs = validateBulk(cfg);
+  if (el) {
+    el.style.display = 'block';
+    el.textContent = 'Đang kiểm tra quyền...';
+  }
+  if (errs.length) {
+    if (el) el.innerHTML = `<div class="matrix-warn">⚠ ${errs.map(escapeHtml).join('<br>')}</div>`;
+    return;
+  }
+  try {
+    const scan = await apiRequest('/permissions/scan', {
+      method: 'POST',
+      body: { adAccountId: cfg.adAccountId, pageIds: cfg.pages.map((p) => p.pageId) },
+      retries: 1
+    });
+    const blocked = new Set((scan.pages || []).filter((x) => !x.ok).map((x) => String(x.pageId)));
+    const perAdsets = cfg.audiences.length;
+    const perAds = cfg.audiences.length * cfg.creatives.length;
+    const rows = cfg.pages
+      .slice(0, 30)
+      .map((p) => {
+        const ok = scan.adAccount?.ok && !blocked.has(String(p.pageId));
+        return `<tr><td>${escapeHtml(p.pageName)}</td><td>${perAdsets}</td><td>${perAds}</td><td>${ok ? '🟢 OK' : '🔴 Chặn'}</td></tr>`;
+      })
+      .join('');
+    const acctLine = scan.adAccount?.ok ? '🟢 Ad Account OK' : '🔴 Ad Account không có quyền';
+    const extra =
+      cfg.pages.length > 30 ? `<div class="hint">... và ${cfg.pages.length - 30} page nữa</div>` : '';
+    if (el) {
+      el.innerHTML = `
+        <div style="font-weight:800;margin-bottom:8px;">${acctLine} • ${blocked.size} page bị chặn / ${cfg.pages.length}</div>
+        <table class="preview-table"><thead><tr><th>Page</th><th>Ad Sets</th><th>Ads</th><th>Quyền</th></tr></thead><tbody>${rows}</tbody></table>
+        ${extra}
+      `;
+    }
+  } catch (err) {
+    if (el) el.innerHTML = `<div class="matrix-warn">Lỗi kiểm tra: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function bulkRun() {
+  if (running) return;
+  const cfg = collectBulkConfig();
+  const errs = validateBulk(cfg);
+  if (errs.length) {
+    setStatusHtml('');
+    appendStatus(errs.join(' | '), 'error');
+    return;
+  }
+
+  running = true;
+  setStatusHtml('');
+  try {
+    appendStatus(
+      `Bulk Launcher: ${cfg.pages.length} page × ${cfg.audiences.length} audience × ${cfg.creatives.length} creative`,
+      'section'
+    );
+    if (cfg.budgetResolved?.label) {
+      appendStatus(`Budget: ${cfg.budgetResolved.label}`, 'section');
+    }
+
+    const scan = await apiRequest('/permissions/scan', {
+      method: 'POST',
+      body: { adAccountId: cfg.adAccountId, pageIds: cfg.pages.map((p) => p.pageId) },
+      retries: 1
+    });
+    if (!scan.adAccount?.ok) {
+      appendStatus(t('actNoPermission'), 'error');
+      return;
+    }
+    const blocked = new Set((scan.pages || []).filter((x) => !x.ok).map((x) => String(x.pageId)));
+
+    const summary = { success: 0, failed: 0, skipped: 0, ads: 0 };
+
+    for (let i = 0; i < cfg.pages.length; i++) {
+      const page = cfg.pages[i];
+      appendDivider();
+      appendStatus(`Page ${i + 1}/${cfg.pages.length}: ${page.pageName} (${page.pageId})`, 'running');
+
+      if (blocked.has(String(page.pageId))) {
+        summary.skipped += 1;
+        appendStatus(`${page.pageName} - SKIP: page chưa cấp quyền vào Business/token`, 'error');
+        continue;
+      }
+
+      try {
+        const data = await apiRequest('/flow/run-matrix-page', {
+          method: 'POST',
+          body: {
+            adAccountId: cfg.adAccountId,
+            campaignType: cfg.campaignType,
+            objective: cfg.objective,
+            dailyBudget: cfg.dailyBudget,
+            namePrefix: cfg.namePrefix,
+            publish: cfg.publish,
+            audiences: cfg.audiences,
+            creatives: cfg.creatives,
+            pageId: page.pageId,
+            pageName: page.pageName,
+            operatorName: getOperatorName(),
+            businessId: els.businessId?.value?.trim() || ''
+          },
+          retries: 0,
+          timeoutMs: 180000
+        });
+
+        summary.success += 1;
+        summary.ads += data.counts?.ads || 0;
+        appendStatus(
+          `${page.pageName} - Tạo ${data.counts?.ads || 0} ad / ${data.counts?.adSets || 0} ad set${
+            data.counts?.failed ? `, lỗi ${data.counts.failed}` : ''
+          }`,
+          'success'
+        );
+        if (data.adsManagerUrl) appendNameLink(page.pageName, data.adsManagerUrl);
+        (data.adResults || [])
+          .filter((r) => !r.ok)
+          .forEach((r) => appendStatus(`  ✗ ${r.audience} • ${r.creative}: ${r.error}`, 'error'));
+      } catch (err) {
+        summary.failed += 1;
+        appendStatus(`${page.pageName} - ${err.message}`, 'error');
+        if (isPermissionDeniedError(err)) {
+          appendStatus(t('failFastPermissionStop'), 'section');
+          break;
+        }
+      }
+    }
+
+    appendDivider();
+    appendStatus(
+      `Tổng kết Bulk: SUCCESS ${summary.success} page | ${summary.ads} ad | SKIP ${summary.skipped} | FAILED ${summary.failed}`,
+      'section'
+    );
+    await refreshReportSummary();
+  } catch (err) {
+    setStatusHtml('');
+    appendStatus(err.message, 'error');
+    console.error(err);
+  } finally {
+    running = false;
+  }
+}
+
+$('audienceList')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.matrix-row-remove');
+  if (btn) {
+    btn.closest('.matrix-row')?.remove();
+    updateBulkMatrix();
+  }
+});
+$('audienceList')?.addEventListener('input', updateBulkMatrix);
+$('creativeList')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.matrix-row-remove');
+  if (btn) {
+    btn.closest('.matrix-row')?.remove();
+    updateBulkMatrix();
+  }
+});
+$('creativeList')?.addEventListener('input', updateBulkMatrix);
+$('addAudienceBtn')?.addEventListener('click', () => addAudienceRow());
+$('addCreativeBtn')?.addEventListener('click', () => addCreativeRow());
+$('bulkPages')?.addEventListener('input', updateBulkMatrix);
+$('bulkCampaignType')?.addEventListener('change', updateBulkMatrix);
+$('bulkPreviewBtn')?.addEventListener('click', bulkPreview);
+$('bulkRunBtn')?.addEventListener('click', bulkRun);
+$('bulkImportBtn')?.addEventListener('click', () => $('bulkImportFileInput')?.click());
+$('bulkImportFileInput')?.addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const lines = String(reader.result || '')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if ($('bulkPages')) {
+      $('bulkPages').value = lines.join('\n');
+      updateBulkMatrix();
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+function initBulkLauncher() {
+  const bulkAcct = $('bulkAdAccountId');
+  if (bulkAcct && !bulkAcct.value) bulkAcct.value = els.adAccountId?.value || '';
+  if ($('audienceList') && !$('audienceList').children.length) addAudienceRow({ label: 'Mặc định' });
+  if ($('creativeList') && !$('creativeList').children.length) {
+    addCreativeRow({ label: 'Bài viết tự động' });
+  }
+  updateBulkMatrix();
+  updateBulkBudgetConvertPreview();
+}
+
+function setupBudgetCurrencyInputs() {
+  const savedCur = localStorage.getItem(BUDGET_CURRENCY_STORAGE_KEY);
+  const savedFx = localStorage.getItem(USD_FX_RATE_STORAGE_KEY);
+  if (els.budgetCurrency && savedCur) els.budgetCurrency.value = savedCur;
+  if (els.usdFxRate && savedFx) els.usdFxRate.value = savedFx;
+
+  els.defaultBudget?.addEventListener('input', updateBudgetConvertPreview);
+  els.budgetCurrency?.addEventListener('change', () => {
+    updateBudgetConvertPreview();
+    syncBulkBudgetCurrencyFromCampaign();
+  });
+  els.usdFxRate?.addEventListener('input', () => {
+    updateBudgetConvertPreview();
+    syncBulkBudgetCurrencyFromCampaign();
+  });
+
+  $('bulkBudget')?.addEventListener('input', updateBulkBudgetConvertPreview);
+  $('bulkBudgetCurrency')?.addEventListener('change', updateBulkBudgetConvertPreview);
+  $('bulkUsdFxRate')?.addEventListener('input', updateBulkBudgetConvertPreview);
+
+  syncBulkBudgetCurrencyFromCampaign();
+  updateBudgetConvertPreview();
+}
+
 setupBackendUrlInput();
 setupOperatorInput();
 setupAdminKeyInput();
+setupBudgetCurrencyInputs();
 applyI18n();
 checkFacebookAuth();
 refreshReportSummary();
 updateAiBadge();
 runLiveAudit();
 updatePageCount();
+initBulkLauncher();

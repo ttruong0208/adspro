@@ -516,6 +516,222 @@ app.post('/flow/run-full-draft', async (req, res) => {
   }
 });
 
+// Bulk Launcher: tạo 1 campaign cho 1 page, nhân tổ hợp Audience × Creative.
+// - Mỗi Audience => 1 Ad Set (target riêng).
+// - Mỗi Creative trong Audience => 1 Ad.
+// - Ngân sách đặt ở Campaign (CBO) nên nhiều Ad Set dùng chung ngân sách.
+// Lỗi từng Ad/Ad Set được cô lập, không làm hỏng cả page.
+app.post('/flow/run-matrix-page', async (req, res) => {
+  const startedAtMs = Date.now();
+  const body = req.body || {};
+  const operatorName = String(
+    req.headers['x-operator-name'] || body.operatorName || ''
+  ).trim();
+  const businessId = String(
+    req.headers['x-business-id'] || body.businessId || ''
+  ).trim();
+
+  try {
+    const {
+      adAccountId,
+      pageId,
+      pageName,
+      campaignType = 'messenger',
+      objective,
+      dailyBudget,
+      audiences = [],
+      creatives = [],
+      publish = true,
+      namePrefix = 'AUTO'
+    } = body;
+
+    if (!adAccountId) return res.status(400).json({ error: 'Missing adAccountId' });
+    if (!pageId) return res.status(400).json({ error: 'Missing pageId' });
+    if (!dailyBudget || Number(dailyBudget) <= 0) {
+      return res.status(400).json({ error: 'Invalid dailyBudget' });
+    }
+
+    const isLeadForm = String(campaignType || 'messenger') === 'lead_form';
+    const resolvedObjective =
+      objective || (isLeadForm ? 'OUTCOME_LEADS' : 'OUTCOME_ENGAGEMENT');
+    const resolvedOptimizationGoal = isLeadForm ? 'LEAD_GENERATION' : 'CONVERSATIONS';
+    const resolvedDestinationType = isLeadForm ? null : 'MESSENGER';
+
+    const safeAudiences =
+      Array.isArray(audiences) && audiences.length
+        ? audiences
+        : [{ label: 'Default', latitude: '', longitude: '', radiusKm: '' }];
+    const safeCreatives =
+      Array.isArray(creatives) && creatives.length
+        ? creatives
+        : [{ label: 'Auto', postId: '', leadFormId: '', message: '' }];
+
+    const label = String(pageName || pageId);
+
+    const campaign = await createCampaignDraft({
+      adAccountId,
+      campaignName: `${namePrefix} ${label} - ${pageId}`,
+      objective: resolvedObjective,
+      dailyBudget
+    });
+
+    const adSetResults = [];
+    const adResults = [];
+    let createdAds = 0;
+    let failed = 0;
+
+    for (const aud of safeAudiences) {
+      const audLabel = String(aud?.label || 'Aud');
+      let adSet = null;
+
+      try {
+        adSet = await createAdSetDraft({
+          adAccountId,
+          campaignId: campaign.id,
+          adSetName: `${label} • ${audLabel}`,
+          pageId,
+          optimizationGoal: resolvedOptimizationGoal,
+          destinationType: resolvedDestinationType,
+          mode: isLeadForm ? 'lead_form' : 'messenger',
+          location: {
+            latitude: aud?.latitude,
+            longitude: aud?.longitude,
+            radiusKm: aud?.radiusKm
+          }
+        });
+        adSetResults.push({ ok: true, audience: audLabel, adSetId: adSet.id });
+      } catch (err) {
+        failed += 1;
+        adSetResults.push({
+          ok: false,
+          audience: audLabel,
+          error: err.message,
+          errorType: err.errorType || classifyMetaError(err.message)
+        });
+        continue;
+      }
+
+      for (const cr of safeCreatives) {
+        const crLabel = String(cr?.label || 'Creative');
+        const adName = `${label} • ${audLabel} • ${crLabel}`;
+
+        try {
+          let ad = null;
+
+          if (isLeadForm) {
+            const formId = String(cr?.leadFormId || body.leadFormId || '').trim();
+            if (!formId) throw new Error('Thiếu Lead Form ID cho creative thu lead');
+            ad = await createLeadFormAd({
+              adAccountId,
+              adSetId: adSet.id,
+              adName,
+              pageId,
+              leadFormId: formId,
+              message: cr?.message || ''
+            });
+          } else if (cr?.postId) {
+            ad = await createAdDraftWithObjectStoryId({
+              adAccountId,
+              adSetId: adSet.id,
+              adName,
+              objectStoryId: String(cr.postId)
+            });
+          } else {
+            const picked = await pickFirstValidPostAndCreateAd({
+              adAccountId,
+              adSetId: adSet.id,
+              adName,
+              pageId,
+              limit: 10
+            });
+            ad = picked.ad;
+          }
+
+          if (publish && ad?.id) {
+            await updateAdStatus({ adId: ad.id, status: 'ACTIVE' });
+          }
+
+          createdAds += 1;
+          adResults.push({ ok: true, audience: audLabel, creative: crLabel, adId: ad?.id || null });
+        } catch (err) {
+          failed += 1;
+          adResults.push({
+            ok: false,
+            audience: audLabel,
+            creative: crLabel,
+            error: err.message,
+            errorType: err.errorType || classifyMetaError(err.message)
+          });
+        }
+      }
+
+      if (publish && adSet?.id) {
+        try {
+          await updateAdSetStatus({ adSetId: adSet.id, status: 'ACTIVE' });
+        } catch {
+          // Non-fatal: giữ ad set ở trạng thái hiện tại nếu publish lỗi.
+        }
+      }
+    }
+
+    if (publish && createdAds > 0) {
+      try {
+        await updateCampaignStatus({ campaignId: campaign.id, status: 'ACTIVE' });
+      } catch {
+        // Non-fatal.
+      }
+    }
+
+    const adsManagerUrl = buildAdsManagerUrl({ adAccountId, campaignId: campaign.id });
+
+    appendRunEvent({
+      ok: createdAds > 0,
+      adAccountId,
+      pageId,
+      budget: Number(dailyBudget) || 0,
+      durationMs: Date.now() - startedAtMs,
+      operatorName,
+      businessId,
+      campaignId: campaign.id
+    });
+
+    res.json({
+      ok: createdAds > 0,
+      pageId,
+      campaign: { id: campaign.id, status: publish && createdAds > 0 ? 'ACTIVE' : 'PAUSED' },
+      counts: {
+        adSets: adSetResults.filter((x) => x.ok).length,
+        ads: createdAds,
+        failed
+      },
+      adSetResults,
+      adResults,
+      adsManagerUrl
+    });
+  } catch (err) {
+    try {
+      appendRunEvent({
+        ok: false,
+        adAccountId: body.adAccountId || '',
+        pageId: body.pageId || '',
+        budget: Number(body.dailyBudget) || 0,
+        durationMs: Date.now() - startedAtMs,
+        operatorName,
+        businessId,
+        errorType: err.errorType || classifyMetaError(err.message),
+        errorMessage: err.message || 'Unknown error'
+      });
+    } catch {
+      // Ignore report-store errors.
+    }
+
+    res.status(400).json({
+      error: err.message,
+      errorType: err.errorType || classifyMetaError(err.message)
+    });
+  }
+});
+
 app.post('/adsets/create-draft', async (req, res) => {
   try {
     const { adAccountId, campaignId, adSetName, pageId, optimizationGoal } = req.body;

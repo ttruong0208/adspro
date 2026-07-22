@@ -1050,6 +1050,161 @@
         line-height: 1.45;
       }
 
+      /* Bulk Launcher */
+      .matrix-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .matrix-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 850;
+      }
+
+      .matrix-add {
+        width: auto;
+        padding: 7px 12px;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .matrix-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .matrix-row {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fbfdff;
+      }
+
+      .matrix-row-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .matrix-row-top .matrix-label-input {
+        flex: 1;
+        font-weight: 800;
+      }
+
+      .matrix-row-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 8px;
+      }
+
+      .matrix-row-fields.creative {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .matrix-row-fields .full {
+        grid-column: 1 / -1;
+      }
+
+      .matrix-row-remove {
+        width: 30px;
+        height: 30px;
+        flex: 0 0 auto;
+        padding: 0;
+        border-radius: 8px;
+        background: #fef2f2;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+        font-size: 15px;
+      }
+
+      .matrix-row-remove:hover {
+        background: #fee2e2;
+      }
+
+      .bulk-publish-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 800;
+        margin: 0;
+        cursor: pointer;
+      }
+
+      .matrix-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .matrix-stat {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        border: 1px solid var(--soft-line);
+        border-radius: 10px;
+        background: #ffffff;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .matrix-stat b {
+        font-size: 20px;
+        font-weight: 900;
+        color: var(--primary);
+      }
+
+      .matrix-stat.total {
+        background: var(--primary-soft);
+        border-color: #bfdbfe;
+      }
+
+      .matrix-stat.total b {
+        color: var(--primary-hover);
+      }
+
+      .matrix-warn {
+        font-size: 12px;
+        color: var(--warning-text);
+        background: var(--warning-bg);
+        border: 1px solid var(--warning-border);
+        border-radius: 10px;
+        padding: 8px 10px;
+        line-height: 1.45;
+      }
+
+      .preview-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+
+      .preview-table th,
+      .preview-table td {
+        text-align: left;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--soft-line);
+      }
+
+      .preview-table th {
+        color: var(--muted);
+        font-weight: 800;
+      }
+
+      @media (max-width: 720px) {
+        .matrix-row-fields,
+        .matrix-row-fields.creative {
+          grid-template-columns: 1fr;
+        }
+      }
+
       @media (max-width: 720px) {
         .ai-subgrid {
           grid-template-columns: 1fr;
@@ -1119,6 +1274,7 @@
         </div>
         <button class="nav-item" type="button" data-page="dashboard"><span class="nav-ico">🏠</span> Dashboard</button>
         <button class="nav-item active" type="button" data-page="campaign"><span class="nav-ico">📢</span> Campaign<span id="navBadgeCampaign" class="nav-badge" style="display:none;">0</span></button>
+        <button class="nav-item" type="button" data-page="bulk"><span class="nav-ico">🧩</span> Bulk Launcher<span id="navBadgeBulk" class="nav-badge" style="display:none;">0</span></button>
         <button class="nav-item" type="button" data-page="pages"><span class="nav-ico">👥</span> Pages</button>
         <button class="nav-item" type="button" data-page="ai"><span class="nav-ico">🤖</span> AI Assistant<span id="navBadgeAi" class="nav-badge">AI</span></button>
         <button class="nav-item" type="button" data-page="reports"><span class="nav-ico">📊</span> Reports<span id="navBadgeReports" class="nav-badge" style="display:none;">0</span></button>
@@ -1293,16 +1449,37 @@
                       </div>
                     </div>
 
-                    <div class="full">
+                    <div>
                       <div class="label-row">
                         <label id="defaultBudgetLabel" for="defaultBudget">Budget (áp dụng mọi pageId)</label>
                         <button type="button" class="ai-explain" data-field="daily_budget" title="AI giải thích trường này">✨</button>
                       </div>
                       <div class="input-wrap">
                         <span class="input-icon">$</span>
-                        <input id="defaultBudget" type="number" min="1" value="100" placeholder="100" />
+                        <input id="defaultBudget" type="number" min="1" value="100000" placeholder="100000" />
                       </div>
-                      <div id="defaultBudgetHint" class="hint">Tài khoản VND thì nhập theo VND (ví dụ `100000`).</div>
+                    </div>
+                    <div>
+                      <label for="budgetCurrency">Đơn vị nhập</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">◎</span>
+                        <select id="budgetCurrency">
+                          <option value="VND" selected>VND → đổi sang USD</option>
+                          <option value="USD">USD (đô)</option>
+                          <option value="RAW">Gửi nguyên số (Meta)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div id="fxRateField">
+                      <label for="usdFxRate">Tỷ giá (VND / 1 USD)</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">⇄</span>
+                        <input id="usdFxRate" type="number" min="1" value="25000" placeholder="25000" />
+                      </div>
+                    </div>
+                    <div class="full">
+                      <div id="budgetConvertPreview" class="hint" style="font-weight:800;color:var(--primary);"></div>
+                      <div id="defaultBudgetHint" class="hint">TKQC USD: chọn VND để nhập tiền Việt rồi tool đổi sang cent USD. VD 100000 VND ≈ $4 → gửi Meta 400.</div>
                     </div>
                   </div>
                 </div>
@@ -1460,6 +1637,151 @@
               <div id="auditHistory" class="ai-output" style="display:none;"></div>
             </div>
 
+              </aside>
+            </div>
+          </section>
+
+          <section class="page" data-page="bulk">
+            <div class="campaign-grid">
+              <div class="campaign-main">
+                <div class="card">
+                  <div class="card-header">
+                    <div class="card-icon">🧩</div>
+                    <div>
+                      <h2 class="card-title">Bulk Launcher</h2>
+                      <p class="card-subtitle">Tạo hàng loạt theo ma trận: mỗi Page × mỗi Audience × mỗi Creative. 1 lần bấm sinh toàn bộ tổ hợp.</p>
+                    </div>
+                  </div>
+
+                  <div class="form-grid">
+                    <div class="full">
+                      <label for="bulkAdAccountId">Ad Account ID</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">♙</span>
+                        <input id="bulkAdAccountId" placeholder="act_1438369167333697" />
+                      </div>
+                    </div>
+                    <div>
+                      <label for="bulkCampaignType">Loại chiến dịch</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">◎</span>
+                        <select id="bulkCampaignType">
+                          <option value="messenger">Tin nhắn (Messenger)</option>
+                          <option value="lead_form">Thu lead (Lead Form)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label for="bulkObjective">Objective</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">◎</span>
+                        <select id="bulkObjective">
+                          <option value="">Tự động theo loại chiến dịch</option>
+                          <option value="OUTCOME_ENGAGEMENT">OUTCOME_ENGAGEMENT</option>
+                          <option value="OUTCOME_LEADS">OUTCOME_LEADS</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label for="bulkBudget">Budget/ngày (mỗi Page, CBO)</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">$</span>
+                        <input id="bulkBudget" type="number" min="1" value="100000" placeholder="100000" />
+                      </div>
+                    </div>
+                    <div>
+                      <label for="bulkBudgetCurrency">Đơn vị nhập</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">◎</span>
+                        <select id="bulkBudgetCurrency">
+                          <option value="VND" selected>VND → đổi sang USD</option>
+                          <option value="USD">USD (đô)</option>
+                          <option value="RAW">Gửi nguyên số (Meta)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div id="bulkFxRateField">
+                      <label for="bulkUsdFxRate">Tỷ giá (VND / 1 USD)</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">⇄</span>
+                        <input id="bulkUsdFxRate" type="number" min="1" value="25000" placeholder="25000" />
+                      </div>
+                    </div>
+                    <div class="full">
+                      <div id="bulkBudgetConvertPreview" class="hint" style="font-weight:800;color:var(--primary);"></div>
+                    </div>
+                    <div>
+                      <label for="bulkNamePrefix">Tiền tố tên chiến dịch</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">▤</span>
+                        <input id="bulkNamePrefix" value="AUTO" placeholder="AUTO" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="matrix-head">
+                    <div>
+                      <h3 class="matrix-title">🎯 Audiences</h3>
+                      <div class="hint" style="margin-top:2px;">Mỗi Audience tạo 1 Ad Set riêng. Để trống tọa độ = khu vực mặc định.</div>
+                    </div>
+                    <button type="button" class="secondary matrix-add" id="addAudienceBtn">＋ Audience</button>
+                  </div>
+                  <div id="audienceList" class="matrix-list"></div>
+                </div>
+
+                <div class="card">
+                  <div class="matrix-head">
+                    <div>
+                      <h3 class="matrix-title">🖼 Creatives</h3>
+                      <div class="hint" style="margin-top:2px;">Mỗi Creative tạo 1 Ad trong từng Ad Set. Để trống Post ID = tool tự lấy bài mới nhất.</div>
+                    </div>
+                    <button type="button" class="secondary matrix-add" id="addCreativeBtn">＋ Creative</button>
+                  </div>
+                  <div id="creativeList" class="matrix-list"></div>
+                </div>
+
+                <div class="card">
+                  <div class="pagelist-head">
+                    <label for="bulkPages" style="margin:0;">Danh sách Page</label>
+                    <span id="bulkPageCount" class="pagelist-count">0 page</span>
+                  </div>
+                  <textarea id="bulkPages" placeholder="61551441819219
+123456789012345 | Tên page (tuỳ chọn)"></textarea>
+                  <div class="pagelist-head" style="margin-top:8px; margin-bottom:0;">
+                    <div class="hint" style="margin:0;">Mỗi dòng 1 Page. Có thể ghi: pageId | Tên page.</div>
+                    <div class="import-btns">
+                      <button type="button" class="secondary" id="bulkImportBtn">⤒ Import TXT/CSV</button>
+                      <input type="file" id="bulkImportFileInput" accept=".txt,.csv" style="display:none;" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card publish-bar">
+                  <label class="bulk-publish-row" for="bulkPublish">
+                    <input type="checkbox" id="bulkPublish" checked style="width:auto;" />
+                    <span>Bật chạy (Publish) ngay sau khi tạo</span>
+                  </label>
+                  <div class="actions" style="margin-top:10px;">
+                    <button id="bulkPreviewBtn" class="secondary" type="button">👁 Xem trước + Check quyền</button>
+                    <button id="bulkRunBtn" class="success btn-lg" type="button">🚀 Chạy Bulk (toàn bộ ma trận)</button>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="campaign-side sticky-audit">
+                <div class="card">
+                  <div class="card-header">
+                    <div class="card-icon">📐</div>
+                    <div>
+                      <h2 class="card-title">Ma trận sẽ tạo</h2>
+                      <p class="card-subtitle">Cập nhật realtime theo cấu hình.</p>
+                    </div>
+                  </div>
+                  <div id="bulkMatrixSummary" class="matrix-summary"></div>
+                  <div id="bulkPreview" class="ai-output" style="display:none;"></div>
+                </div>
               </aside>
             </div>
           </section>
