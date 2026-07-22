@@ -4,7 +4,9 @@ const OPERATOR_NAME_STORAGE_KEY = 'adsmanager_operator_name';
 const LANGUAGE_STORAGE_KEY = 'adsmanager_language';
 const BUDGET_CURRENCY_STORAGE_KEY = 'adsmanager_budget_currency';
 const USD_FX_RATE_STORAGE_KEY = 'adsmanager_usd_fx_rate';
+const FB_RATE_LIMIT_UNTIL_KEY = 'adsmanager_fb_rate_limit_until';
 const DEFAULT_USD_FX_RATE = 25000;
+const FB_CONNECT_RATE_LIMIT_MS = 15 * 60 * 1000;
 
 const els = {
   mainTitle: $('mainTitle'),
@@ -207,10 +209,11 @@ const I18N = {
     skipNoPermission: '{{name}} - SKIP: page chưa cấp quyền vào Business/token',
     runSuccess: '{{name}} - Thành công',
     runSummary: 'Tổng kết: SUCCESS {{success}} | SKIP_NO_PERMISSION {{skip}} | FAILED {{failed}}',
-    runSummaryFailFastSkipped: 'Bỏ qua {{count}} dòng còn lại do fail-fast lỗi quyền.',
+    runSummaryFailFastSkipped: 'Bỏ qua {{count}} dòng còn lại do dừng sớm khi gặp lỗi.',
     missingLeadFormId: 'Chế độ thu lead cần Lead Form ID. Nhập ở ô Lead Form ID, hoặc theo từng dòng dạng: pageId|formId. Thiếu ở dòng: {{lines}}',
     runDone: 'Đã chạy xong tất cả các dòng.',
     failFastPermissionStop: 'Dừng sớm: lỗi quyền ad account/token. Ngừng chạy các dòng còn lại để tránh mất thời gian.',
+    failFastAnyErrorStop: 'Dừng sớm: gặp lỗi khi chạy. Ngừng các dòng còn lại. (Rate limit thì tool tự chờ 15 phút rồi chạy tiếp.)',
     adSetPrefix: 'Nhóm QC',
     exportCsvBackendInvalid: 'Backend URL chưa hợp lệ, không export được CSV.',
     noPermissionInputIds: 'Chưa nhập ID nào trong ô Danh sách pageId.',
@@ -334,10 +337,11 @@ const I18N = {
     skipNoPermission: '{{name}} - SKIP: page is not granted in Business/token',
     runSuccess: '{{name}} - Success',
     runSummary: 'Summary: SUCCESS {{success}} | SKIP_NO_PERMISSION {{skip}} | FAILED {{failed}}',
-    runSummaryFailFastSkipped: 'Skipped {{count}} remaining rows due to permission fail-fast.',
+    runSummaryFailFastSkipped: 'Skipped {{count}} remaining rows due to early stop on error.',
     missingLeadFormId: 'Lead form mode needs a Lead Form ID. Enter it in the Lead Form ID box, or per line as: pageId|formId. Missing at lines: {{lines}}',
     runDone: 'Completed all rows.',
     failFastPermissionStop: 'Fail-fast: ad account/token permission error. Stopping remaining rows to save time.',
+    failFastAnyErrorStop: 'Early stop: an error occurred. Remaining rows will not run. (Rate limit waits 15 minutes then continues.)',
     adSetPrefix: 'Ad Set',
     exportCsvBackendInvalid: 'Backend URL is invalid, cannot export CSV.',
     noPermissionInputIds: 'No IDs entered in the page ID list box.',
@@ -775,9 +779,135 @@ async function apiRequestWithRateLimitRetry(path, options = {}, maxWaits = 2) {
 
 function setLoginButtonState({ disabled = false, text = null, reason = '' } = {}) {
   if (!els.loginFacebookBtn) return;
+  // Đang khóa rate limit thì không cho mở lại bằng check auth.
+  if (isFbConnectRateLimited() && !disabled) {
+    applyFbConnectRateLimitUi();
+    return;
+  }
   els.loginFacebookBtn.disabled = disabled;
+  els.loginFacebookBtn.classList.toggle('is-locked', disabled);
   if (text) els.loginFacebookBtn.textContent = text;
   els.loginFacebookBtn.title = reason || '';
+}
+
+function getFbRateLimitUntil() {
+  const n = Number(localStorage.getItem(FB_RATE_LIMIT_UNTIL_KEY) || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function isFbConnectRateLimited() {
+  return Date.now() < getFbRateLimitUntil();
+}
+
+function lockFbConnectForRateLimit(ms = FB_CONNECT_RATE_LIMIT_MS) {
+  const until = Date.now() + ms;
+  localStorage.setItem(FB_RATE_LIMIT_UNTIL_KEY, String(until));
+  applyFbConnectRateLimitUi();
+  startFbRateLimitCountdown();
+}
+
+function clearFbConnectRateLimit({ notify = false } = {}) {
+  localStorage.removeItem(FB_RATE_LIMIT_UNTIL_KEY);
+  stopFbRateLimitCountdown();
+  const note = $('fbRateLimitNote');
+  if (note) {
+    note.style.display = 'none';
+    note.textContent = '';
+  }
+  if (els.loginFacebookBtn) {
+    els.loginFacebookBtn.disabled = false;
+    els.loginFacebookBtn.classList.remove('is-locked');
+  }
+  if (notify) {
+    if (els.authStatus) {
+      els.authStatus.className = 'auth-status ok';
+      els.authStatus.textContent = 'Đã hết chờ rate limit — có thể Kết nối lại Facebook.';
+    }
+    try {
+      window.alert('Đã hết 15 phút chờ Meta rate limit. Bạn có thể bấm Kết nối lại Facebook.');
+    } catch {
+      // ignore
+    }
+  }
+  checkFacebookAuth();
+}
+
+let fbRateLimitTimer = null;
+
+function stopFbRateLimitCountdown() {
+  if (fbRateLimitTimer) {
+    clearInterval(fbRateLimitTimer);
+    fbRateLimitTimer = null;
+  }
+}
+
+function formatRemainMmSs(ms) {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function applyFbConnectRateLimitUi() {
+  const until = getFbRateLimitUntil();
+  const remain = until - Date.now();
+  const note = $('fbRateLimitNote');
+  if (remain <= 0) {
+    clearFbConnectRateLimit({ notify: true });
+    return;
+  }
+  if (els.loginFacebookBtn) {
+    els.loginFacebookBtn.disabled = true;
+    els.loginFacebookBtn.classList.add('is-locked');
+    els.loginFacebookBtn.textContent = `⏳ Chờ rate limit (${formatRemainMmSs(remain)})`;
+    els.loginFacebookBtn.title = 'Meta đang giới hạn tốc độ app. Đợi hết giờ rồi thử lại.';
+  }
+  if (note) {
+    note.style.display = 'block';
+    note.textContent =
+      `Meta rate limit (#4). Nút kết nối Facebook đang khóa. Còn ${formatRemainMmSs(remain)} — hết giờ sẽ tự mở lại và thông báo.`;
+  }
+  if (els.authStatus) {
+    els.authStatus.className = 'auth-status warn';
+    els.authStatus.textContent = 'Tạm khóa kết nối Facebook vì Meta rate limit';
+  }
+}
+
+function startFbRateLimitCountdown() {
+  stopFbRateLimitCountdown();
+  applyFbConnectRateLimitUi();
+  fbRateLimitTimer = setInterval(() => {
+    if (!isFbConnectRateLimited()) {
+      clearFbConnectRateLimit({ notify: true });
+      return;
+    }
+    applyFbConnectRateLimitUi();
+  }, 1000);
+}
+
+function handleFbAuthQueryFlags() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    if (params.get('fb_rate_limit') === '1') {
+      lockFbConnectForRateLimit();
+      params.delete('fb_rate_limit');
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash || ''}`;
+      window.history.replaceState({}, '', next);
+      return;
+    }
+    if (params.get('fb_connected') === '1') {
+      clearFbConnectRateLimit({ notify: false });
+      params.delete('fb_connected');
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash || ''}`;
+      window.history.replaceState({}, '', next);
+      if (els.authStatus) {
+        els.authStatus.className = 'auth-status ok';
+        els.authStatus.textContent = 'Kết nối Facebook thành công.';
+      }
+    }
+  } catch {
+    // ignore
+  }
 }
 
 function renderFacebookIdentity(profile) {
@@ -1680,12 +1810,15 @@ async function runFullFlow() {
         summary.failed += 1;
         appendStatus(`${item.pageName} - ${err.message}`, 'error');
 
-        if (isPermissionDeniedError(err)) {
-          const remain = Math.max(items.length - (i + 1), 0);
-          summary.skippedByFailFast += remain;
-          appendStatus(t('failFastPermissionStop'), 'section');
-          break;
-        }
+        // Rate limit đã được apiRequestWithRateLimitRetry xử lý (chờ 15p).
+        // Mọi lỗi khác khi đang chạy → dừng batch, không chạy tiếp ID còn lại.
+        const remain = Math.max(items.length - (i + 1), 0);
+        summary.skippedByFailFast += remain;
+        appendStatus(
+          isPermissionDeniedError(err) ? t('failFastPermissionStop') : t('failFastAnyErrorStop'),
+          'section'
+        );
+        break;
       }
 
       // Nghỉ nhẹ giữa các page để giảm rate limit Meta.
@@ -1736,7 +1869,16 @@ function exportReportCsv() {
 }
 
 els.loginFacebookBtn.addEventListener('click', () => {
+  if (isFbConnectRateLimited()) {
+    applyFbConnectRateLimitUi();
+    return;
+  }
   window.open(`${getBackendUrl()}/auth/facebook/start`, '_blank');
+});
+window.addEventListener('storage', (e) => {
+  if (e.key !== FB_RATE_LIMIT_UNTIL_KEY) return;
+  if (isFbConnectRateLimited()) startFbRateLimitCountdown();
+  else clearFbConnectRateLimit({ notify: false });
 });
 els.checkBackendBtn?.addEventListener('click', checkFacebookAuth);
 els.autoFixPermissionsBtn?.addEventListener('click', autoFixPermissionsFlow);
@@ -2834,10 +2976,13 @@ async function bulkRun() {
       } catch (err) {
         summary.failed += 1;
         appendStatus(`${page.pageName} - ${err.message}`, 'error');
-        if (isPermissionDeniedError(err)) {
-          appendStatus(t('failFastPermissionStop'), 'section');
-          break;
-        }
+        // Rate limit đã chờ 15p trong apiRequestWithRateLimitRetry.
+        // Lỗi khác → dừng, không chạy page còn lại.
+        appendStatus(
+          isPermissionDeniedError(err) ? t('failFastPermissionStop') : t('failFastAnyErrorStop'),
+          'section'
+        );
+        break;
       }
 
       if (i < cfg.pages.length - 1) await sleepMs(800);
@@ -2973,6 +3118,8 @@ setupBackendUrlInput();
 setupOperatorInput();
 setupAdminKeyInput();
 setupBudgetCurrencyInputs();
+handleFbAuthQueryFlags();
+if (isFbConnectRateLimited()) startFbRateLimitCountdown();
 applyI18n();
 checkFacebookAuth();
 refreshReportSummary();

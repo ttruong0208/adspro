@@ -362,9 +362,26 @@
         font-weight: 800;
       }
 
-      .auth-status.warn {
-        color: var(--danger);
-        font-weight: 800;
+      button.primary:disabled,
+      button.primary.is-locked {
+        opacity: 0.45;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+        pointer-events: none;
+        filter: grayscale(0.4);
+      }
+
+      .auth-rate-limit-note {
+        margin-top: 8px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        color: #c2410c;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.45;
       }
 
       .grid {
@@ -1325,6 +1342,7 @@
                 <div id="authStatus" class="auth-status">Đang kiểm tra trạng thái kết nối...</div>
                 <div id="fbIdentity" class="hint" style="display:none;"></div>
                 <div id="authConfigHint" class="hint" style="display:none;"></div>
+                <div id="fbRateLimitNote" class="auth-rate-limit-note" style="display:none;"></div>
 
                 <button id="loginFacebookBtn" type="button" class="primary">
                   f Đăng nhập Facebook

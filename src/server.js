@@ -1247,25 +1247,22 @@ app.get('/auth/facebook/start', (req, res) => {
 });
 
 app.get('/auth/facebook/callback', async (req, res) => {
+  const redirectHome = (query = '') => {
+    const q = query ? (query.startsWith('?') ? query : `?${query}`) : '';
+    return res.redirect(`/${q}`);
+  };
+
+  const isRateLimitText = (text, code = '') =>
+    /request limit|rate limit|#4|application request limit|code.?4/i.test(String(text || '')) ||
+    String(code) === '4';
+
   try {
     const errorMessage = String(req.query.error_message || req.query.error || '');
     const errorCode = String(req.query.error_code || '');
 
     if (errorMessage) {
-      const isRateLimit =
-        /request limit|rate limit|#4|code.?4/i.test(errorMessage) ||
-        String(errorCode) === '4';
-      if (isRateLimit) {
-        return res.status(429).send(`
-          <!doctype html>
-          <html lang="vi"><head><meta charset="utf-8" /><title>Meta rate limit</title></head>
-          <body style="font-family:Arial,sans-serif;padding:40px;max-width:560px;margin:0 auto;">
-            <h1>Meta đang giới hạn tốc độ (rate limit)</h1>
-            <p>App bị <b>Application request limit reached</b>. Đây không phải lỗi quyền.</p>
-            <p>Hãy <b>đợi khoảng 15 phút</b>, rồi quay lại tool bấm <b>Kết nối lại Facebook</b>.</p>
-            <p style="color:#64748b;font-size:13px;">Chi tiết: ${errorMessage}</p>
-          </body></html>
-        `);
+      if (isRateLimitText(errorMessage, errorCode)) {
+        return redirectHome('fb_rate_limit=1');
       }
       return res.status(400).send(
         `Facebook login error${errorCode ? ` (${errorCode})` : ''}: ${errorMessage}`
@@ -1313,24 +1310,13 @@ app.get('/auth/facebook/callback', async (req, res) => {
       // Ignore store write failures in stateless/serverless environments.
     }
 
-    res.send(`
-      <!doctype html>
-      <html lang="vi">
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Kết nối Facebook thành công</title>
-        </head>
-        <body style="font-family:Arial,sans-serif;padding:40px;text-align:center;">
-          <h1>Kết nối Facebook thành công</h1>
-          <p>Đã lưu token cho tài khoản: <strong>${me.name || 'Không rõ tên'}</strong></p>
-          <p>Facebook ID: <strong>${me.id || 'Không rõ ID'}</strong></p>
-          <p>Bạn có thể đóng tab này và quay lại ứng dụng.</p>
-        </body>
-      </html>
-    `);
+    return redirectHome('fb_connected=1');
   } catch (err) {
-    res.status(400).send(`Auth callback error: ${err.message}`);
+    const msg = err?.message || 'Auth callback error';
+    if (isRateLimitText(msg)) {
+      return redirectHome('fb_rate_limit=1');
+    }
+    res.status(400).send(`Auth callback error: ${msg}`);
   }
 });
 async function getFacebookMe(userToken) {
